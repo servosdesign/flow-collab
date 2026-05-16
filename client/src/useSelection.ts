@@ -1,4 +1,10 @@
-import type { EdgeMouseEvent, NodeChange, NodeDragEvent, NodeMouseEvent } from "@vue-flow/core";
+import type {
+  EdgeMouseEvent,
+  NodeChange,
+  NodeDragEvent,
+  NodeDragItem,
+  NodeMouseEvent
+} from "@vue-flow/core";
 import { computed, nextTick } from "vue";
 import type { SyncEdge, SyncNode } from "@vue-flow-sync/shared";
 import type { JsonOp } from "sharedb/lib/client";
@@ -10,12 +16,25 @@ import {
   getNodeSize,
   getRenderedNodeBounds,
   normalizeNode,
+  sameJson,
   stripParentExtent,
   withDefaultEdges,
   type FlowEdge,
   type FlowNode
 } from "./graph";
 import type { FlowRuntime } from "./flowRuntime";
+import type { SelectionMoveDrag } from "./flowTypes";
+
+type LargeSelectionMovePreviewMode = "bundle" | "visible";
+
+const largeSelectionMovePreviewMode: LargeSelectionMovePreviewMode = "bundle";
+const largeSelectionMovePreviewThreshold = 8;
+const hideSelectedNodesDuringBundleMove = true;
+const maxSelectionMovePreviewShapes = 36;
+const selectionMovePreviewShapeIndexes = Array.from(
+  { length: maxSelectionMovePreviewShapes },
+  (_, index) => index
+);
 
 function getAction<T>(runtime: FlowRuntime, name: string) {
   return runtime.actions[name] as T;
@@ -43,6 +62,12 @@ export function useSelection(runtime: FlowRuntime) {
   let lassoPointerCaptureTarget: HTMLElement | null = null;
   let lassoSelectionBox: HTMLDivElement | null = null;
   let selectionMovePointerCaptureTarget: HTMLElement | null = null;
+  let selectionMovePreviewElement: HTMLElement | null = null;
+  let selectionMoveHiddenElements: Array<{
+    element: HTMLElement;
+    pointerEvents: string;
+    visibility: string;
+  }> = [];
   let hasPendingCursorClientPoint = false;
   let pendingCursorClientX = 0;
   let pendingCursorClientY = 0;
@@ -60,12 +85,10 @@ export function useSelection(runtime: FlowRuntime) {
     const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
     if (selectionMoveDrag?.selectedBounds) {
       runtime.selectionBoundsVersion.value;
-      const deltaX = selectionMoveDrag.currentClientX - selectionMoveDrag.startClientX;
-      const deltaY = selectionMoveDrag.currentClientY - selectionMoveDrag.startClientY;
 
       return {
-        left: `${selectionMoveDrag.selectedBounds.left + deltaX}px`,
-        top: `${selectionMoveDrag.selectedBounds.top + deltaY}px`,
+        left: `${selectionMoveDrag.selectedBounds.left}px`,
+        top: `${selectionMoveDrag.selectedBounds.top}px`,
         width: `${selectionMoveDrag.selectedBounds.width}px`,
         height: `${selectionMoveDrag.selectedBounds.height}px`
       };
@@ -115,6 +138,31 @@ export function useSelection(runtime: FlowRuntime) {
   });
 
   const isSingleNodeSelection = computed(() => runtime.selectedNodeIds.value.size <= 1);
+
+  const selectionMovePreview = computed(() => {
+    const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
+
+    if (
+      !runtime.isMovingSelection.value ||
+      selectionMoveDrag?.mode !== "bundle" ||
+      selectionMoveDrag.movingIndexes.length === 0
+    ) {
+      return {
+        active: false,
+        count: 0,
+        shapes: [] as number[]
+      };
+    }
+
+    return {
+      active: true,
+      count: selectionMoveDrag.movingIndexes.length,
+      shapes: selectionMovePreviewShapeIndexes.slice(
+        0,
+        Math.min(selectionMoveDrag.movingIndexes.length, maxSelectionMovePreviewShapes)
+      )
+    };
+  });
 
   const lassoPreviewRects = computed(() => {
     if (!runtime.isLassoSelecting.value || runtime.lassoPreviewNodeIds.value.size === 0) {
@@ -408,7 +456,10 @@ export function useSelection(runtime: FlowRuntime) {
   }
 
   function handleNodesChange(changes: NodeChange[]) {
-    if (changes.some((change) => change.type === "dimensions" || change.type === "position")) {
+    if (
+      !runtime.interaction.selectionMoveDrag &&
+      changes.some((change) => change.type === "dimensions" || change.type === "position")
+    ) {
       nextTick(() => {
         scheduleSelectionBoundsRefresh();
       });
@@ -788,35 +839,144 @@ export function useSelection(runtime: FlowRuntime) {
     };
   }
 
-  function buildSelectionDragPreviewNodes() {
-    const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
+  function getSelectionMoveDelta(selectionMoveDrag: SelectionMoveDrag) {
+    const viewport = runtime.currentViewport.value;
 
-    if (!selectionMoveDrag) {
-      return null;
+    return {
+      x: (selectionMoveDrag.currentClientX - selectionMoveDrag.startClientX) / viewport.zoom,
+      y: (selectionMoveDrag.currentClientY - selectionMoveDrag.startClientY) / viewport.zoom
+    };
+  }
+
+  function getFlowNodeElement(nodeId: string) {
+    const escapedNodeId =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(nodeId)
+        : nodeId.replace(/["\\]/g, "\\$&");
+
+    return runtime.canvasPanel.value?.querySelector<HTMLElement>(
+      `.vue-flow__node[data-id="${escapedNodeId}"]`
+    ) ?? null;
+  }
+
+  function clearSelectionMoveHiddenNodes() {
+    selectionMoveHiddenElements.forEach(({ element, pointerEvents, visibility }) => {
+      element.classList.remove("selection-drag-hidden");
+      element.style.visibility = visibility;
+      element.style.pointerEvents = pointerEvents;
+    });
+    selectionMoveHiddenElements = [];
+  }
+
+  function hideBundleSelectionNodes(selectionMoveDrag: SelectionMoveDrag) {
+    clearSelectionMoveHiddenNodes();
+
+    if (!hideSelectedNodesDuringBundleMove || selectionMoveDrag.mode !== "bundle") {
+      return;
     }
 
-    const viewport = runtime.currentViewport.value;
-    const deltaX = (selectionMoveDrag.currentClientX - selectionMoveDrag.startClientX) / viewport.zoom;
-    const deltaY = (selectionMoveDrag.currentClientY - selectionMoveDrag.startClientY) / viewport.zoom;
-    const nextNodes = selectionMoveDrag.originalNodes.slice() as FlowNode[];
+    selectionMoveDrag.movingIds.forEach((nodeId) => {
+      const element = getFlowNodeElement(nodeId);
 
-    selectionMoveDrag.movingIndexes.forEach((index) => {
-      const node = selectionMoveDrag.originalNodes[index];
-
-      if (!node) {
+      if (!element) {
         return;
       }
 
-      nextNodes[index] = {
-        ...node,
-        position: {
-          x: Math.round(node.position.x + deltaX),
-          y: Math.round(node.position.y + deltaY)
-        }
-      } as FlowNode;
+      element.classList.add("selection-drag-hidden");
+      selectionMoveHiddenElements.push({
+        element,
+        pointerEvents: element.style.pointerEvents,
+        visibility: element.style.visibility
+      });
+      element.style.visibility = "hidden";
+      element.style.pointerEvents = "none";
+    });
+  }
+
+  function buildSelectionMoveDragMetadata(
+    originalSyncNodes: SyncNode[],
+    movingIds: Set<string>
+  ) {
+    const graph = createGraphCache(originalSyncNodes);
+    const dragItems: NodeDragItem[] = [];
+    const originalPositionsById = new Map<string, { x: number; y: number }>();
+
+    movingIds.forEach((nodeId) => {
+      const syncNode = graph.nodeById.get(nodeId);
+
+      if (!syncNode) {
+        return;
+      }
+
+      const flowNode = runtime.findNode(nodeId) as
+        | (FlowNode & {
+            computedPosition?: { x: number; y: number };
+            dimensions?: { width?: number; height?: number };
+            extent?: NodeDragItem["extent"];
+            expandParent?: boolean;
+          })
+        | undefined;
+      const absolutePosition = flowNode?.computedPosition
+        ? {
+            x: flowNode.computedPosition.x,
+            y: flowNode.computedPosition.y
+          }
+        : getAbsolutePosition(syncNode, graph);
+      const dimensions = flowNode?.dimensions?.width && flowNode.dimensions.height
+        ? {
+            width: flowNode.dimensions.width,
+            height: flowNode.dimensions.height
+          }
+        : getNodeSize(syncNode, syncNode.type === "section" ? 720 : 240, syncNode.type === "section" ? 620 : 190);
+
+      originalPositionsById.set(nodeId, absolutePosition);
+      dragItems.push({
+        id: nodeId,
+        position: { ...absolutePosition },
+        distance: { x: 0, y: 0 },
+        dimensions,
+        from: { ...absolutePosition },
+        extent: flowNode?.extent,
+        parentNode: syncNode.parentNode,
+        expandParent: syncNode.expandParent ?? flowNode?.expandParent
+      });
     });
 
-    return nextNodes;
+    return {
+      dragItems,
+      originalPositionsById
+    };
+  }
+
+  function updateSelectionDragItemPositions(selectionMoveDrag: SelectionMoveDrag) {
+    const delta = getSelectionMoveDelta(selectionMoveDrag);
+    let changed = false;
+
+    selectionMoveDrag.dragItems.forEach((dragItem) => {
+      const originalPosition = selectionMoveDrag.originalPositionsById.get(dragItem.id) ?? dragItem.from;
+      const nextPosition = {
+        x: Math.round(originalPosition.x + delta.x),
+        y: Math.round(originalPosition.y + delta.y)
+      };
+
+      if (dragItem.position.x !== nextPosition.x || dragItem.position.y !== nextPosition.y) {
+        changed = true;
+      }
+
+      dragItem.position = nextPosition;
+    });
+
+    return changed;
+  }
+
+  function applyVisibleSelectionMove(selectionMoveDrag: SelectionMoveDrag, dragging: boolean) {
+    const changed = updateSelectionDragItemPositions(selectionMoveDrag);
+
+    if (changed) {
+      runtime.updateNodePositions(selectionMoveDrag.dragItems, true, dragging);
+    } else if (!dragging) {
+      runtime.updateNodePositions(selectionMoveDrag.dragItems, false, false);
+    }
   }
 
   function applySelectionMoveFrame() {
@@ -827,14 +987,132 @@ export function useSelection(runtime: FlowRuntime) {
     }
 
     selectionMoveDrag.frame = undefined;
-    const nextNodes = buildSelectionDragPreviewNodes();
+    paintSelectionMovePreview(selectionMoveDrag);
 
-    if (!nextNodes) {
+    if (selectionMoveDrag.mode === "bundle") {
       return;
     }
 
-    runtime.nodes.value = nextNodes;
-    runtime.selectionBoundsVersion.value += 1;
+    applyVisibleSelectionMove(selectionMoveDrag, true);
+  }
+
+  function paintSelectionMovePreview(
+    selectionMoveDrag: SelectionMoveDrag
+  ) {
+    const element = selectionMovePreviewElement;
+    const deltaX = selectionMoveDrag.currentClientX - selectionMoveDrag.startClientX;
+    const deltaY = selectionMoveDrag.currentClientY - selectionMoveDrag.startClientY;
+
+    if (element) {
+      element.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0)`;
+    }
+  }
+
+  function clearSelectionMovePreview() {
+    if (selectionMovePreviewElement) {
+      selectionMovePreviewElement.style.transform = "";
+      selectionMovePreviewElement.style.willChange = "";
+    }
+
+    selectionMovePreviewElement = null;
+    clearSelectionMoveHiddenNodes();
+  }
+
+  function buildCommittedSelectionMoveNodes(
+    selectionMoveDrag: SelectionMoveDrag
+  ) {
+    const delta = getSelectionMoveDelta(selectionMoveDrag);
+
+    return selectionMoveDrag.originalSyncNodes.map((node) => {
+      if (!selectionMoveDrag.movingIds.has(node.id)) {
+        return node;
+      }
+
+      return {
+        ...node,
+        position: {
+          x: Math.round(node.position.x + delta.x),
+          y: Math.round(node.position.y + delta.y)
+        }
+      };
+    });
+  }
+
+  function hasCommittedSelectionMovePositionChange(
+    selectionMoveDrag: SelectionMoveDrag
+  ) {
+    const delta = getSelectionMoveDelta(selectionMoveDrag);
+
+    for (const nodeId of selectionMoveDrag.movingIds) {
+      const node = selectionMoveDrag.originalSyncNodesById.get(nodeId);
+
+      if (!node) {
+        continue;
+      }
+
+      if (
+        Math.round(node.position.x + delta.x) !== node.position.x ||
+        Math.round(node.position.y + delta.y) !== node.position.y
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function getStableNodeChanges(documentNodes: SyncNode[], nextNodes: SyncNode[]) {
+    if (documentNodes.length !== nextNodes.length) {
+      return null;
+    }
+
+    const changes: Array<{ index: number; oldNode: SyncNode; nextNode: SyncNode }> = [];
+
+    for (let index = 0; index < documentNodes.length; index += 1) {
+      const oldNode = documentNodes[index];
+      const nextNode = nextNodes[index];
+
+      if (oldNode.id !== nextNode.id) {
+        return null;
+      }
+
+      if (!sameJson(oldNode, nextNode)) {
+        changes.push({ index, oldNode, nextNode });
+      }
+    }
+
+    return changes;
+  }
+
+  function isPositionOnlyNodeChange(oldNode: SyncNode, nextNode: SyncNode) {
+    if (oldNode.id !== nextNode.id) {
+      return false;
+    }
+
+    return sameJson(oldNode, {
+      ...nextNode,
+      position: oldNode.position
+    });
+  }
+
+  function submitPositionOnlySelectionMove(
+    drag: SelectionMoveDrag,
+    changes: Array<{ index: number; oldNode: SyncNode; nextNode: SyncNode }>
+  ) {
+    if (drag.mode === "bundle") {
+      applyVisibleSelectionMove(drag, false);
+    } else {
+      updateSelectionDragItemPositions(drag);
+      runtime.updateNodePositions(drag.dragItems, false, false);
+    }
+
+    submitOperation(
+      changes.map(({ index, oldNode, nextNode }) => ({
+        p: ["nodes", index],
+        ld: oldNode,
+        li: nextNode
+      }) as JsonOp)
+    );
   }
 
   function scheduleSelectionMoveFrame() {
@@ -878,16 +1156,35 @@ export function useSelection(runtime: FlowRuntime) {
     closeContextMenu();
 
     const normalizedOriginalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode);
-    const originalNodes = withSelectionState(
-      normalizedOriginalNodes.map(stripParentExtent) as FlowNode[]
-    );
     const movingIds = getMovableSelectedIds(normalizedOriginalNodes);
-    const movingIndexes = originalNodes
+    const movingIndexes = normalizedOriginalNodes
       .map((node, index) => (movingIds.has(node.id) ? index : -1))
       .filter((index) => index >= 0);
+    const mode =
+      largeSelectionMovePreviewMode === "bundle" &&
+      movingIndexes.length > largeSelectionMovePreviewThreshold
+        ? "bundle"
+        : "visible";
+    const originalSyncNodesById = new Map(normalizedOriginalNodes.map((node) => [node.id, node]));
+    const { dragItems, originalPositionsById } = buildSelectionMoveDragMetadata(
+      normalizedOriginalNodes,
+      movingIds
+    );
     const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    const previewElement =
+      (event.target instanceof Element
+        ? event.target.closest<HTMLElement>(".selected-nodes-outline")
+        : null) ??
+      target?.closest<HTMLElement>(".selected-nodes-outline") ??
+      runtime.canvasPanel.value?.querySelector<HTMLElement>(".selected-nodes-outline") ??
+      null;
 
     selectionMovePointerCaptureTarget = target;
+    clearSelectionMovePreview();
+    selectionMovePreviewElement = previewElement;
+    if (selectionMovePreviewElement) {
+      selectionMovePreviewElement.style.willChange = "transform";
+    }
     if (target && typeof target.setPointerCapture === "function") {
       try {
         target.setPointerCapture(event.pointerId);
@@ -897,15 +1194,20 @@ export function useSelection(runtime: FlowRuntime) {
     }
 
     runtime.interaction.selectionMoveDrag = {
+      mode,
       startClientX: event.clientX,
       startClientY: event.clientY,
       currentClientX: event.clientX,
       currentClientY: event.clientY,
-      originalNodes,
+      originalSyncNodes: normalizedOriginalNodes,
+      originalSyncNodesById,
+      originalPositionsById,
+      dragItems,
       movingIds,
       movingIndexes,
       selectedBounds: getSelectedBoundsSnapshot()
     };
+    hideBundleSelectionNodes(runtime.interaction.selectionMoveDrag);
     runtime.isMovingSelection.value = true;
     window.addEventListener("pointermove", handleSelectedBoundsPointerMove, { capture: true });
     window.addEventListener("pointerup", handleSelectedBoundsPointerUp, { capture: true, once: true });
@@ -935,37 +1237,54 @@ export function useSelection(runtime: FlowRuntime) {
       drag.currentClientY = event.clientY;
     }
     flushSelectionMoveFrame();
-    runtime.interaction.selectionMoveDrag = null;
-    runtime.isMovingSelection.value = false;
-    scheduleSelectionBoundsRefresh();
     if (selectionMovePointerCaptureTarget?.hasPointerCapture(event.pointerId)) {
       selectionMovePointerCaptureTarget.releasePointerCapture(event.pointerId);
     }
     selectionMovePointerCaptureTarget = null;
 
     if (!drag) {
+      runtime.interaction.selectionMoveDrag = null;
+      runtime.isMovingSelection.value = false;
+      scheduleSelectionBoundsRefresh();
+      clearSelectionMovePreview();
       return;
     }
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    commitMovedSelectedNodes(drag.movingIds);
+    const committed = commitMovedSelectedNodes(drag);
+    runtime.interaction.selectionMoveDrag = null;
+    runtime.isMovingSelection.value = false;
+    scheduleSelectionBoundsRefresh();
+    if (committed) {
+      nextTick(clearSelectionMovePreview);
+    } else {
+      clearSelectionMovePreview();
+    }
   }
 
-  function commitMovedSelectedNodes(movingIds: Set<string>) {
+  function commitMovedSelectedNodes(
+    drag: SelectionMoveDrag
+  ) {
     const document = runtime.flowDocument.value;
+    const movingIds = drag.movingIds;
 
     if (!document || movingIds.size === 0) {
       submitGraphSnapshot();
-      return;
+      return false;
     }
 
-    const nextNodes = getCurrentSyncNodes();
+    if (!hasCommittedSelectionMovePositionChange(drag)) {
+      runtime.updateNodePositions(drag.dragItems, false, false);
+      return false;
+    }
+
+    const nextNodes = buildCommittedSelectionMoveNodes(drag);
     const nextEdges = getCurrentSyncEdges(nextNodes);
     const previousNodesById = new Map(document.data.nodes.map((node) => [node.id, node]));
+    const graph = createGraphCache(nextNodes, nextEdges);
 
-    Array.from(movingIds).forEach((nodeId) => {
-      const graph = createGraphCache(nextNodes, nextEdges);
+    movingIds.forEach((nodeId) => {
       const node = graph.nodeById.get(nodeId);
 
       if (!node) {
@@ -978,24 +1297,43 @@ export function useSelection(runtime: FlowRuntime) {
         getNodeSize(node, node.type === "section" ? 720 : 240, node.type === "section" ? 620 : 190),
         nextNodes,
         nextEdges,
-        previousNodesById.get(node.id)
+        previousNodesById.get(node.id),
+        graph
       );
     });
 
+    const nodeChanges = getStableNodeChanges(document.data.nodes, nextNodes);
+    const edgesChanged = !sameJson(document.data.edges, nextEdges);
+    const canSubmitPositionOnly =
+      nodeChanges !== null &&
+      !edgesChanged &&
+      nodeChanges.length > 0 &&
+      nodeChanges.every(({ oldNode, nextNode }) =>
+        movingIds.has(nextNode.id) && isPositionOnlyNodeChange(oldNode, nextNode)
+      );
+
+    if (canSubmitPositionOnly) {
+      submitPositionOnlySelectionMove(drag, nodeChanges);
+      return true;
+    }
+
     runtime.nodes.value = withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[]);
     runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges));
-    submitOperation([
-      {
+    submitOperation(
+      [
+        !sameJson(document.data.nodes, nextNodes) && {
         p: ["nodes"],
         od: document.data.nodes,
         oi: nextNodes
       },
-      {
+        edgesChanged && {
         p: ["edges"],
         od: document.data.edges,
         oi: nextEdges
       }
-    ]);
+      ].filter(Boolean) as JsonOp[]
+    );
+    return true;
   }
 
   function getSelectedClientBounds() {
@@ -1058,6 +1396,7 @@ export function useSelection(runtime: FlowRuntime) {
       cursorCoordinateFrame = undefined;
     }
     hasPendingCursorClientPoint = false;
+    clearSelectionMovePreview();
     runtime.interaction.selectionMoveDrag = null;
     selectionMovePointerCaptureTarget = null;
     lassoPointerCaptureTarget = null;
@@ -1084,6 +1423,7 @@ export function useSelection(runtime: FlowRuntime) {
     isSingleNodeSelection,
     lassoPreviewRects,
     selectOnlyNode,
+    selectionMovePreview,
     selectedBoundsStyle,
     setSelectedNodes
   };

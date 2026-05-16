@@ -47,18 +47,36 @@ export function usePresence(runtime: FlowRuntime) {
     };
   }
 
-  function applyPresenceDocument(document: SyncPresenceDocument) {
-    runtime.collaborators.value = Object.values(cloneJson(document).users ?? {});
-  }
-
-  function submitPresenceUser(user: SyncPresenceUser) {
-    const document = runtime.presenceDocument.value;
-
-    if (!document) {
+  function applyPresenceDocument(document?: SyncPresenceDocument | null) {
+    if (!document?.users) {
+      runtime.collaborators.value = [];
       return;
     }
 
-    const oldUser = document.data.users?.[user.id];
+    runtime.collaborators.value = Object.values(cloneJson(document).users ?? {});
+  }
+
+  function getPresenceDocumentData() {
+    const document = runtime.presenceDocument.value;
+
+    if (!document?.data?.users) {
+      return null;
+    }
+
+    return {
+      document,
+      data: document.data
+    };
+  }
+
+  function submitPresenceUser(user: SyncPresenceUser) {
+    const presence = getPresenceDocumentData();
+
+    if (!presence) {
+      return;
+    }
+
+    const oldUser = presence.data.users[user.id];
     const operation = oldUser
       ? {
           p: ["users", user.id],
@@ -70,7 +88,7 @@ export function usePresence(runtime: FlowRuntime) {
           oi: user
         };
 
-    document.submitOp([operation], { source: runtime.localSource });
+    presence.document.submitOp([operation], { source: runtime.localSource });
   }
 
   function getPresenceSelectedNodeIds() {
@@ -104,14 +122,14 @@ export function usePresence(runtime: FlowRuntime) {
   }
 
   function removePresenceUser() {
-    const document = runtime.presenceDocument.value;
-    const oldUser = document?.data.users?.[runtime.userId.value];
+    const presence = getPresenceDocumentData();
+    const oldUser = presence?.data.users[runtime.userId.value];
 
-    if (!document || !oldUser) {
+    if (!presence || !oldUser) {
       return;
     }
 
-    document.submitOp(
+    presence.document.submitOp(
       [
         {
           p: ["users", runtime.userId.value],

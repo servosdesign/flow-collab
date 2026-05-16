@@ -5,6 +5,7 @@ import type {
   SyncPresenceDocument,
   SyncPresenceUser
 } from "@vue-flow-sync/shared";
+import type { NodeDragItem } from "@vue-flow/core";
 import type { ComputedRef, Ref } from "vue";
 import type { ShareDocument } from "sharedb/lib/client";
 import type { FlowEdge, FlowNode, ResizeParams } from "./graph";
@@ -25,12 +26,18 @@ export type DragSelection = {
   currentLocalY: number;
 };
 
+export type SelectionMoveDragMode = "visible" | "bundle";
+
 export type SelectionMoveDrag = {
+  mode: SelectionMoveDragMode;
   startClientX: number;
   startClientY: number;
   currentClientX: number;
   currentClientY: number;
-  originalNodes: FlowNode[];
+  originalSyncNodes: SyncNode[];
+  originalSyncNodesById: Map<string, SyncNode>;
+  originalPositionsById: Map<string, { x: number; y: number }>;
+  dragItems: NodeDragItem[];
   movingIds: Set<string>;
   movingIndexes: number[];
   frame?: number;

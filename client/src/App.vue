@@ -80,6 +80,7 @@ const {
   resizeNodePreview,
   selectedBoundsStyle,
   selectedLabel,
+  selectionMovePreview,
   setCreateMode,
   shouldShowNodeResizer,
   startNodeResize,
@@ -308,10 +309,26 @@ const {
         <div
           v-if="selectedBoundsStyle"
           class="selected-nodes-outline"
+          :class="{ 'selection-preview-active': selectionMovePreview.active }"
           :style="selectedBoundsStyle"
           @pointerdown="handleSelectedBoundsPointerDown"
           @contextmenu="openSelectedBoundsContextMenu"
         >
+          <div
+            v-if="selectionMovePreview.active"
+            class="selection-move-preview-content"
+            aria-hidden="true"
+          >
+            <span
+              v-for="shape in selectionMovePreview.shapes"
+              :key="shape"
+              class="selection-move-preview-shape"
+            ></span>
+            <strong class="selection-move-preview-count">
+              <span>{{ selectionMovePreview.count }}</span>
+              <small>nodes</small>
+            </strong>
+          </div>
           <span
             class="selected-bounds-hit selected-bounds-hit-top"
             @pointerdown="handleSelectedBoundsPointerDown"

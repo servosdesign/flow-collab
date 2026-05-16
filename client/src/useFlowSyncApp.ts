@@ -118,6 +118,7 @@ export function useFlowSyncApp() {
     isNodeSelected,
     isSingleNodeSelection,
     lassoPreviewRects,
+    selectionMovePreview,
     selectedBoundsStyle
   } = selection;
   const contextMenu = installActions(runtime, useContextMenu(runtime));
@@ -157,7 +158,24 @@ export function useFlowSyncApp() {
   const edgeCount = computed(() => edges.value.length);
   const hasError = computed(() => errorMessage.value.length > 0);
   const emptySelectedUsers: SyncPresenceUser[] = [];
+  let selectedUsersSignature = "";
+  let cachedSelectedUsersByNodeId = new Map<string, SyncPresenceUser[]>();
   const selectedUsersByNodeId = computed(() => {
+    const signature = visibleCollaborators.value
+      .map((user) =>
+        [
+          user.id,
+          user.name,
+          user.color,
+          user.selectedNodeIds?.join(",") ?? ""
+        ].join("\u0001")
+      )
+      .join("\u0002");
+
+    if (signature === selectedUsersSignature) {
+      return cachedSelectedUsersByNodeId;
+    }
+
     const byNodeId = new Map<string, SyncPresenceUser[]>();
 
     visibleCollaborators.value.forEach((user) => {
@@ -177,7 +195,10 @@ export function useFlowSyncApp() {
       });
     });
 
-    return byNodeId;
+    selectedUsersSignature = signature;
+    cachedSelectedUsersByNodeId = byNodeId;
+
+    return cachedSelectedUsersByNodeId;
   });
 
   function userInitials(name: string) {
@@ -361,6 +382,7 @@ export function useFlowSyncApp() {
     scheduleGraphSnapshot,
     selectedBoundsStyle,
     selectedLabel,
+    selectionMovePreview,
     setCreateMode,
     shouldShowNodeResizer,
     startNodeResize,

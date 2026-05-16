@@ -63,6 +63,7 @@ export function useRealtimeSync(runtime: FlowRuntime) {
         return;
       }
 
+      runtime.errorMessage.value = "";
       runtime.status.value = "Live";
     });
   }

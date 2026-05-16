@@ -593,9 +593,9 @@ export function applySectionMembershipForMovedNode(
   dimensions: { width: number; height: number },
   nextNodes: SyncNode[],
   nextEdges: SyncEdge[],
-  existingNode?: SyncNode
+  existingNode?: SyncNode,
+  graph = createGraphCache(nextNodes, nextEdges)
 ) {
-  const graph = createGraphCache(nextNodes, nextEdges);
   const sourceNode = existingNode ?? graph.nodeById.get(nodeId);
 
   if (!sourceNode) {
