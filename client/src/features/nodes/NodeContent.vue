@@ -55,8 +55,10 @@ function handleUpload(event: Event) {
   <div class="node-header">
     <input
       class="node-title-input nodrag nopan"
+      data-node-interactive
       :value="titleValue()"
       @input.stop="handleTitleInput"
+      @click.stop
       @mousedown.stop
       @pointerdown.stop
       @touchstart.stop
@@ -64,6 +66,7 @@ function handleUpload(event: Event) {
     />
     <button
       class="node-menu-button"
+      data-node-interactive
       type="button"
       title="Node actions"
       @click.stop="emit('open-menu', $event)"
@@ -76,9 +79,11 @@ function handleUpload(event: Event) {
   <div class="node-body">
     <textarea
       class="node-input node-textarea nodrag nopan"
+      data-node-interactive
       :value="bodyValue()"
       :rows="bodyRows()"
       @input.stop="handleBodyInput"
+      @click.stop
       @mousedown.stop
       @pointerdown.stop
       @touchstart.stop
@@ -86,12 +91,27 @@ function handleUpload(event: Event) {
     />
   </div>
   <div class="node-tools">
-    <label class="image-picker" title="Upload image">
+    <label
+      class="image-picker"
+      data-node-interactive
+      title="Upload image"
+      @click.stop
+      @mousedown.stop
+      @pointerdown.stop
+      @touchstart.stop
+    >
       <Image :size="15" aria-hidden="true" />
-      <input type="file" accept="image/*" @change="handleUpload" />
+      <input
+        data-node-interactive
+        type="file"
+        accept="image/*"
+        @click.stop
+        @change="handleUpload"
+      />
     </label>
     <button
       class="port-add-button"
+      data-node-interactive
       type="button"
       title="Add port"
       @click.stop="emit('add-port')"

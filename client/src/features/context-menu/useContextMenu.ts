@@ -37,6 +37,13 @@ export function useContextMenu(runtime: FlowRuntime, services: FlowEditorService
     runtime.duplicateCount.value = 1;
   }
 
+  function areSameNodeIds(currentIds: string[], nextIds: string[]) {
+    return (
+      currentIds.length === nextIds.length &&
+      nextIds.every((nodeId) => currentIds.includes(nodeId))
+    );
+  }
+
   function openNodeContextMenu(payload: NodeMouseEvent) {
     if (!runtime.isLoggedIn.value || !(payload.event instanceof MouseEvent)) {
       return;
@@ -80,8 +87,17 @@ export function useContextMenu(runtime: FlowRuntime, services: FlowEditorService
     event.stopPropagation();
 
     const selectedIds = getSelectedNodeIds();
+    const currentTarget = runtime.contextTarget.value;
 
     if (selectedIds.length > 1 && selectedIds.includes(nodeId)) {
+      if (
+        currentTarget?.kind === "selection" &&
+        areSameNodeIds(currentTarget.ids, selectedIds)
+      ) {
+        closeContextMenu();
+        return;
+      }
+
       runtime.duplicateCount.value = 1;
       runtime.contextTarget.value = {
         kind: "selection",
@@ -92,7 +108,11 @@ export function useContextMenu(runtime: FlowRuntime, services: FlowEditorService
       return;
     }
 
-    selectOnlyNode(nodeId);
+    if (currentTarget?.kind === "node" && currentTarget.id === nodeId) {
+      closeContextMenu();
+      return;
+    }
+
     runtime.duplicateCount.value = 1;
     runtime.contextTarget.value = {
       kind: "node",

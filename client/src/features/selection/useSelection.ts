@@ -34,6 +34,9 @@ type LassoPointerRect = {
   currentClientY: number;
 };
 
+const nodeInteractiveSelector =
+  "input, textarea, button, label, select, [contenteditable], .nodrag, .nopan, [data-node-interactive]";
+
 export function useSelection(runtime: FlowRuntime, services: FlowEditorServices) {
   let lassoBoundsCache: LassoNodeBounds[] = [];
   let pendingLassoRect: LassoPointerRect | null = null;
@@ -162,8 +165,16 @@ export function useSelection(runtime: FlowRuntime, services: FlowEditorServices)
     lassoSelectionBox = null;
   }
 
+  function isNodeInteractiveTarget(target: EventTarget | null) {
+    return target instanceof Element && Boolean(target.closest(nodeInteractiveSelector));
+  }
+
   function handleNodeClick(payload: NodeMouseEvent) {
     if (!runtime.isLoggedIn.value) {
+      return;
+    }
+
+    if (isNodeInteractiveTarget(payload.event.target)) {
       return;
     }
 

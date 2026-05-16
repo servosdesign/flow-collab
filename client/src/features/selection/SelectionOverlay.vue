@@ -8,6 +8,54 @@ const {
   selectedBoundsStyle,
   selectionMovePreview
 } = useSelectionOverlayContext();
+
+function createForwardedWheelEvent(event: WheelEvent) {
+  return new WheelEvent("wheel", {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    screenX: event.screenX,
+    screenY: event.screenY,
+    deltaX: event.deltaX,
+    deltaY: event.deltaY,
+    deltaZ: event.deltaZ,
+    deltaMode: event.deltaMode,
+    ctrlKey: event.ctrlKey,
+    shiftKey: event.shiftKey,
+    altKey: event.altKey,
+    metaKey: event.metaKey,
+    button: event.button,
+    buttons: event.buttons,
+    relatedTarget: event.relatedTarget,
+    view: window
+  });
+}
+
+function handleSelectedBoundsWheel(event: WheelEvent) {
+  const overlay = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+
+  if (!overlay) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const previousPointerEvents = overlay.style.pointerEvents;
+  overlay.style.pointerEvents = "none";
+  const target =
+    document.elementFromPoint(event.clientX, event.clientY) ??
+    overlay.parentElement?.querySelector(".flow-canvas");
+  overlay.style.pointerEvents = previousPointerEvents;
+
+  if (!target || target === overlay || overlay.contains(target)) {
+    return;
+  }
+
+  target.dispatchEvent(createForwardedWheelEvent(event));
+}
 </script>
 
 <template>
@@ -27,6 +75,7 @@ const {
     :style="selectedBoundsStyle"
     @pointerdown="handleSelectedBoundsPointerDown"
     @contextmenu="openSelectedBoundsContextMenu"
+    @wheel="handleSelectedBoundsWheel"
   >
     <div
       v-if="selectionMovePreview.active"

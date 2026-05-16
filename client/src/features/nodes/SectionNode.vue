@@ -2,9 +2,9 @@
 import { Handle, Position } from "@vue-flow/core";
 import { NodeResizer, type OnResize, type OnResizeEnd, type OnResizeStart } from "@vue-flow/node-resizer";
 import "@vue-flow/node-resizer/dist/style.css";
-import { computed } from "vue";
 import type { SyncNodeData, SyncPresenceUser } from "@vue-flow-sync/shared";
 import SectionContent from "./SectionContent.vue";
+import { useStableResizerStyle } from "./useStableResizerStyle";
 
 const props = defineProps<{
   id: string;
@@ -27,16 +27,7 @@ defineEmits<{
   "add-port": [id: string];
 }>();
 
-const resizerHandleStyle = computed(() => {
-  const zoom = props.viewportZoom && props.viewportZoom > 0 ? props.viewportZoom : 1;
-  const size = 9 / zoom;
-
-  return {
-    width: `${size}px`,
-    height: `${size}px`,
-    borderWidth: `${Math.max(1 / zoom, 0.5)}px`
-  };
-});
+const resizerStyle = useStableResizerStyle(() => props.viewportZoom);
 
 function userInitials(name: string) {
   return name
@@ -49,10 +40,14 @@ function userInitials(name: string) {
 </script>
 
 <template>
-  <div class="sync-node section-node" :class="{ selected }">
+  <div
+    class="sync-node section-node"
+    :class="{ selected }"
+  >
     <div
       v-if="showResizer"
       class="node-resizer-layer"
+      :style="resizerStyle"
       @mousedown.stop
       @pointerdown.stop
       @touchstart.stop
@@ -63,7 +58,6 @@ function userInitials(name: string) {
         :min-width="360"
         :min-height="240"
         :auto-scale="false"
-        :handle-style="resizerHandleStyle"
         color="#0f766e"
         @resize-start="$emit('resize-start', id, $event.params)"
         @resize="$emit('resize', id, $event.params)"

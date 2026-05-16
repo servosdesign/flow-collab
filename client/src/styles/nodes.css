@@ -35,6 +35,7 @@
 
 .vue-flow__node {
   overflow: visible;
+  will-change: transform;
 }
 
 .node-presence {
@@ -67,6 +68,9 @@
   inset: 0;
   z-index: 30;
   pointer-events: none;
+  --node-resizer-handle-size: 9px;
+  --node-resizer-handle-border-width: 1px;
+  --node-resizer-line-width: 1px;
 }
 
 .node-resizer-layer .vue-flow__resize-control {
@@ -418,9 +422,9 @@
 }
 
 .vue-flow__resize-control.handle {
-  width: 9px;
-  height: 9px;
-  border: 1px solid #ffffff;
+  width: var(--node-resizer-handle-size);
+  height: var(--node-resizer-handle-size);
+  border: var(--node-resizer-handle-border-width) solid #ffffff;
   background: #0f766e;
   z-index: 20 !important;
   pointer-events: all;
@@ -428,5 +432,32 @@
 
 .vue-flow__resize-control.line {
   border-color: #0f766e;
+  pointer-events: all;
+}
+
+.vue-flow__resize-control.line.left,
+.vue-flow__resize-control.line.right {
+  width: var(--node-resizer-line-width);
+}
+
+.vue-flow__resize-control.line.left {
+  border-left-width: var(--node-resizer-line-width);
+}
+
+.vue-flow__resize-control.line.right {
+  border-right-width: var(--node-resizer-line-width);
+}
+
+.vue-flow__resize-control.line.top,
+.vue-flow__resize-control.line.bottom {
+  height: var(--node-resizer-line-width);
+}
+
+.vue-flow__resize-control.line.top {
+  border-top-width: var(--node-resizer-line-width);
+}
+
+.vue-flow__resize-control.line.bottom {
+  border-bottom-width: var(--node-resizer-line-width);
 }
 

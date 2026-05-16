@@ -17,6 +17,8 @@ import RemoteCursorLayer from "../presence/RemoteCursorLayer.vue";
 import SelectionOverlay from "../selection/SelectionOverlay.vue";
 import CanvasOverlays from "./CanvasOverlays.vue";
 
+const nodeSnapGrid: [number, number] = [1, 1];
+
 const {
   canvasPanel,
   closeContextMenu,
@@ -110,6 +112,8 @@ const {
       :pan-on-drag="isLoggedIn ? [2] : false"
       :select-nodes-on-drag="false"
       :selection-key-code="null"
+      :snap-grid="nodeSnapGrid"
+      snap-to-grid
       :zoom-on-double-click="isLoggedIn"
       :zoom-on-pinch="isLoggedIn"
       :zoom-on-scroll="isLoggedIn"

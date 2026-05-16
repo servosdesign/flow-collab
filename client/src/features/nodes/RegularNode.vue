@@ -5,6 +5,7 @@ import "@vue-flow/node-resizer/dist/style.css";
 import { computed, defineComponent, h, type PropType } from "vue";
 import type { SyncNodeData, SyncPort, SyncPresenceUser } from "@vue-flow-sync/shared";
 import NodeContent from "./NodeContent.vue";
+import { useStableResizerStyle } from "./useStableResizerStyle";
 
 const props = defineProps<{
   id: string;
@@ -59,16 +60,7 @@ const minimumNodeHeight = computed(() => {
 
   return 150 + bodyHeight + imageHeight + widgetHeight + portHeight;
 });
-const resizerHandleStyle = computed(() => {
-  const zoom = props.viewportZoom && props.viewportZoom > 0 ? props.viewportZoom : 1;
-  const size = 9 / zoom;
-
-  return {
-    width: `${size}px`,
-    height: `${size}px`,
-    borderWidth: `${Math.max(1 / zoom, 0.5)}px`
-  };
-});
+const resizerStyle = useStableResizerStyle(() => props.viewportZoom);
 
 function portTop(index: number) {
   return `${((index + 1) / (ports.value.length + 1)) * 100}%`;
@@ -167,10 +159,14 @@ const HiddenWorkload = defineComponent({
 </script>
 
 <template>
-  <div class="sync-node item-node" :class="{ selected }">
+  <div
+    class="sync-node item-node"
+    :class="{ selected }"
+  >
     <div
       v-if="showResizer"
       class="node-resizer-layer"
+      :style="resizerStyle"
       @mousedown.stop
       @pointerdown.stop
       @touchstart.stop
@@ -181,7 +177,6 @@ const HiddenWorkload = defineComponent({
         :min-width="minimumNodeWidth"
         :min-height="minimumNodeHeight"
         :auto-scale="false"
-        :handle-style="resizerHandleStyle"
         color="#0f766e"
         @resize-start="$emit('resize-start', id, $event.params)"
         @resize="$emit('resize', id, $event.params)"
