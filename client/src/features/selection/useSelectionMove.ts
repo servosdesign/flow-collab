@@ -16,6 +16,7 @@ import {
   sameJson,
   stripParentExtent,
   withDefaultEdges,
+  type FlowEdge,
   type FlowNode
 } from "../../domain/graph";
 import type { FlowRuntime } from "../../flowRuntime";
@@ -34,6 +35,7 @@ const hideSelectedNodesDuringBundleMove = true;
 const maxSelectionMovePreviewShapes = 36;
 const nodePointerMoveThreshold = 3;
 const selectionDragHiddenClass = "selection-drag-hidden";
+const selectionDragHiddenEdgeClass = "selection-drag-hidden-edge";
 
 type UseSelectionMoveOptions = {
   selectedBoundsStyle: ComputedRef<Record<string, string> | null>;
@@ -49,6 +51,12 @@ type HiddenNodeClassSnapshot = {
   id: string;
   hadClass: boolean;
   className: FlowNode["class"];
+};
+
+type HiddenEdgeClassSnapshot = {
+  id: string;
+  hadClass: boolean;
+  className: FlowEdge["class"];
 };
 
 type RuntimePositionedFlowNode = FlowNode & {
@@ -85,6 +93,7 @@ export function useSelectionMove(
   let selectionMovePointerCaptureTarget: HTMLElement | null = null;
   let selectionMovePreviewElement: HTMLElement | null = null;
   let selectionMoveHiddenClassSnapshots: HiddenNodeClassSnapshot[] = [];
+  let selectionMoveHiddenEdgeClassSnapshots: HiddenEdgeClassSnapshot[] = [];
   let selectionMovePointerId: number | null = null;
   let pendingNodePointerMove: PendingNodePointerMove | null = null;
 
@@ -284,20 +293,44 @@ export function useSelectionMove(
     };
   }
 
-  function hasClassName(className: FlowNode["class"], name: string) {
-    return typeof className === "string" && className.split(/\s+/).includes(name);
-  }
-
-  function withClassName(className: FlowNode["class"], name: string) {
-    const classNames = typeof className === "string"
-      ? className.split(/\s+/).filter(Boolean)
-      : [];
-
-    if (!classNames.includes(name)) {
-      classNames.push(name);
+  function hasClassName(className: FlowNode["class"] | FlowEdge["class"], name: string) {
+    if (typeof className === "string") {
+      return className.split(/\s+/).includes(name);
     }
 
-    return classNames.join(" ");
+    if (Array.isArray(className)) {
+      return className.includes(name);
+    }
+
+    if (className && typeof className === "object") {
+      return Boolean((className as Record<string, unknown>)[name]);
+    }
+
+    return false;
+  }
+
+  function withClassName<T extends FlowNode["class"] | FlowEdge["class"]>(className: T, name: string): T {
+    if (typeof className === "string") {
+      const classNames = className.split(/\s+/).filter(Boolean);
+
+      if (!classNames.includes(name)) {
+        classNames.push(name);
+      }
+
+      return classNames.join(" ") as T;
+    }
+
+    if (Array.isArray(className)) {
+      return (className.includes(name) ? className : [...className, name]) as T;
+    }
+
+    if (className && typeof className === "object") {
+      return (hasClassName(className, name)
+        ? className
+        : { ...className, [name]: true }) as T;
+    }
+
+    return name as T;
   }
 
   function restoreNodeClass(node: FlowNode, snapshot: HiddenNodeClassSnapshot) {
@@ -311,6 +344,19 @@ export function useSelectionMove(
     const { class: _className, ...nextNode } = node;
 
     return nextNode as FlowNode;
+  }
+
+  function restoreEdgeClass(edge: FlowEdge, snapshot: HiddenEdgeClassSnapshot) {
+    if (snapshot.hadClass) {
+      return {
+        ...edge,
+        class: snapshot.className
+      };
+    }
+
+    const { class: _className, ...nextEdge } = edge;
+
+    return nextEdge as FlowEdge;
   }
 
   function clearSelectionMoveHiddenNodes() {
@@ -337,6 +383,33 @@ export function useSelectionMove(
 
     if (changed) {
       runtime.nodes.value = nextNodes;
+    }
+  }
+
+  function clearSelectionMoveHiddenEdges() {
+    if (selectionMoveHiddenEdgeClassSnapshots.length === 0) {
+      return;
+    }
+
+    const snapshotsById = new Map(
+      selectionMoveHiddenEdgeClassSnapshots.map((snapshot) => [snapshot.id, snapshot])
+    );
+    let changed = false;
+    const nextEdges = (runtime.edges.value as FlowEdge[]).map((edge) => {
+      const snapshot = snapshotsById.get(edge.id);
+
+      if (!snapshot || !hasClassName(edge.class, selectionDragHiddenEdgeClass)) {
+        return edge;
+      }
+
+      changed = true;
+      return restoreEdgeClass(edge, snapshot);
+    });
+
+    selectionMoveHiddenEdgeClassSnapshots = [];
+
+    if (changed) {
+      runtime.edges.value = nextEdges;
     }
   }
 
@@ -381,13 +454,56 @@ export function useSelectionMove(
     }
   }
 
+  function hideSelectionMoveInternalEdges(hiddenIds: Set<string>) {
+    clearSelectionMoveHiddenEdges();
+
+    if (hiddenIds.size < 2) {
+      return;
+    }
+
+    const nextSnapshots: HiddenEdgeClassSnapshot[] = [];
+    let changed = false;
+    const nextEdges = (runtime.edges.value as FlowEdge[]).map((edge) => {
+      if (!hiddenIds.has(edge.source) || !hiddenIds.has(edge.target)) {
+        return edge;
+      }
+
+      nextSnapshots.push({
+        id: edge.id,
+        hadClass: Object.prototype.hasOwnProperty.call(edge, "class"),
+        className: edge.class
+      });
+
+      const nextClassName = withClassName(edge.class, selectionDragHiddenEdgeClass);
+
+      if (edge.class === nextClassName) {
+        return edge;
+      }
+
+      changed = true;
+
+      return {
+        ...edge,
+        class: nextClassName
+      };
+    });
+
+    selectionMoveHiddenEdgeClassSnapshots = nextSnapshots;
+
+    if (changed) {
+      runtime.edges.value = nextEdges;
+    }
+  }
+
   function hideBundleSelectionNodes(selectionMoveDrag: SelectionMoveDrag) {
     if (!hideSelectedNodesDuringBundleMove || selectionMoveDrag.mode !== "bundle") {
       clearSelectionMoveHiddenNodes();
+      clearSelectionMoveHiddenEdges();
       return;
     }
 
     hideSelectionMoveNodes(selectionMoveDrag.hiddenIds);
+    hideSelectionMoveInternalEdges(selectionMoveDrag.hiddenIds);
   }
 
   function handleSectionNodeDragStart(sectionId: string) {
@@ -435,7 +551,11 @@ export function useSelectionMove(
       },
       hiddenIds: descendantIds
     };
+    const internalEdgeNodeIds = new Set(descendantIds);
+    internalEdgeNodeIds.add(sectionId);
+
     hideSelectionMoveNodes(descendantIds);
+    hideSelectionMoveInternalEdges(internalEdgeNodeIds);
   }
 
   function clearSectionNodeDragPreview() {
@@ -447,6 +567,7 @@ export function useSelectionMove(
 
     runtime.sectionNodeDragPreview.value = null;
     clearSelectionMoveHiddenNodes();
+    clearSelectionMoveHiddenEdges();
   }
 
   function buildSelectionMoveDragMetadata(originalSyncNodes: SyncNode[], movingIds: Set<string>) {
@@ -708,6 +829,7 @@ export function useSelectionMove(
 
     selectionMovePreviewElement = null;
     clearSelectionMoveHiddenNodes();
+    clearSelectionMoveHiddenEdges();
   }
 
   function buildCommittedSelectionMoveNodes(
