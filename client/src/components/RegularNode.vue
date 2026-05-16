@@ -95,7 +95,7 @@ const DenseBars = defineComponent({
     return () =>
       h(
         "div",
-        { class: "node-widget bars-widget" },
+        { class: "node-widget bars-widget", "aria-hidden": "true" },
         componentProps.bars.map((bar, index) =>
           h("span", { key: index, style: { height: `${bar}%` } })
         )
@@ -115,7 +115,7 @@ const StatusMatrix = defineComponent({
     return () =>
       h(
         "div",
-        { class: "node-widget matrix-widget" },
+        { class: "node-widget matrix-widget", "aria-hidden": "true" },
         componentProps.tiles
           .slice(0, 18)
           .map((tile) => h("span", { key: tile.id, class: `tone-${tile.tone}` }))
@@ -133,7 +133,7 @@ const MiniGauge = defineComponent({
   },
   setup(componentProps) {
     return () =>
-      h("div", { class: "node-widget gauge-widget" }, [
+      h("div", { class: "node-widget gauge-widget", "aria-hidden": "true" }, [
         h("span", {
           style: { transform: `rotate(${(componentProps.seed % 130) - 65}deg)` }
         })
@@ -169,6 +169,7 @@ const HiddenWorkload = defineComponent({
 <template>
   <div class="sync-node item-node" :class="{ selected }">
     <div
+      v-if="showResizer"
       class="node-resizer-layer"
       @mousedown.stop
       @pointerdown.stop
@@ -176,7 +177,7 @@ const HiddenWorkload = defineComponent({
     >
       <NodeResizer
         :node-id="id"
-        :is-visible="showResizer"
+        :is-visible="true"
         :min-width="minimumNodeWidth"
         :min-height="minimumNodeHeight"
         :auto-scale="false"

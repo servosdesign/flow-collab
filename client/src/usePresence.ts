@@ -10,6 +10,9 @@ function getAction<T extends (...args: never[]) => unknown>(runtime: FlowRuntime
 }
 
 export function usePresence(runtime: FlowRuntime) {
+  let cachedSelectedNodeIdSource: Set<string> | null = null;
+  let cachedSelectedNodeIds: string[] = [];
+
   const visibleCollaborators = computed(() =>
     runtime.collaborators.value
       .filter((user) => Date.now() - user.updatedAt < 45_000)
@@ -70,15 +73,24 @@ export function usePresence(runtime: FlowRuntime) {
     document.submitOp([operation], { source: runtime.localSource });
   }
 
-  function getLocalPresenceUser(cursor = runtime.timers.pendingCursor): SyncPresenceUser {
-    const getSelectedNodeIds = getAction<() => string[]>(runtime, "getSelectedNodeIds");
+  function getPresenceSelectedNodeIds() {
+    const selectedNodeIdSource = runtime.selectedNodeIds.value;
 
+    if (cachedSelectedNodeIdSource !== selectedNodeIdSource) {
+      cachedSelectedNodeIdSource = selectedNodeIdSource;
+      cachedSelectedNodeIds = Array.from(selectedNodeIdSource);
+    }
+
+    return cachedSelectedNodeIds;
+  }
+
+  function getLocalPresenceUser(cursor = runtime.timers.pendingCursor): SyncPresenceUser {
     return {
       id: runtime.userId.value,
       name: runtime.userName.value.trim(),
       color: runtime.userColor.value,
-      cursor,
-      selectedNodeIds: getSelectedNodeIds(),
+      cursor: cursor ? { x: cursor.x, y: cursor.y } : undefined,
+      selectedNodeIds: getPresenceSelectedNodeIds(),
       updatedAt: Date.now()
     };
   }
@@ -161,10 +173,24 @@ export function usePresence(runtime: FlowRuntime) {
   }
 
   function scheduleCursorUpdate(position: { x: number; y: number }) {
-    runtime.timers.pendingCursor = {
-      x: Math.round(position.x),
-      y: Math.round(position.y)
-    };
+    if (!runtime.isLoggedIn.value) {
+      return;
+    }
+
+    const x = Math.round(position.x);
+    const y = Math.round(position.y);
+    const pendingCursor = runtime.timers.pendingCursor;
+
+    if (pendingCursor) {
+      if (pendingCursor.x === x && pendingCursor.y === y) {
+        return;
+      }
+
+      pendingCursor.x = x;
+      pendingCursor.y = y;
+    } else {
+      runtime.timers.pendingCursor = { x, y };
+    }
 
     if (runtime.timers.cursorCommitTimer) {
       return;
@@ -178,6 +204,7 @@ export function usePresence(runtime: FlowRuntime) {
 
   function cleanupPresence() {
     window.clearTimeout(runtime.timers.cursorCommitTimer);
+    runtime.timers.cursorCommitTimer = undefined;
     removePresenceUser();
   }
 

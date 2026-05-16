@@ -27,7 +27,7 @@ export function createFlowAppState(): FlowAppState {
     closeRealtime: shallowRef<(() => void) | null>(null),
     localSource: crypto.randomUUID(),
     currentViewport: ref<FlowViewport>({ x: 80, y: 60, zoom: 0.45 }),
-    rightSelection: ref<DragSelection | null>(null),
+    rightSelection: shallowRef<DragSelection | null>(null),
     selectedNodeIds: shallowRef<Set<string>>(new Set()),
     lassoPreviewNodeIds: shallowRef<Set<string>>(new Set()),
     duplicateCount: ref(1),

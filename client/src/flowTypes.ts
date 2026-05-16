@@ -28,8 +28,18 @@ export type DragSelection = {
 export type SelectionMoveDrag = {
   startClientX: number;
   startClientY: number;
-  originalNodes: SyncNode[];
+  currentClientX: number;
+  currentClientY: number;
+  originalNodes: FlowNode[];
   movingIds: Set<string>;
+  movingIndexes: number[];
+  frame?: number;
+  selectedBounds: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null;
 };
 
 export type FlowTimers = {

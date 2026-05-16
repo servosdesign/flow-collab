@@ -19,7 +19,6 @@ const {
   ConnectionLineType,
   ConnectionMode,
   contextTarget,
-  currentViewport,
   deleteContextTarget,
   duplicateContextTarget,
   duplicateCount,
@@ -30,14 +29,13 @@ const {
   errorMessage,
   getCursorStyle,
   getMiniMapNodeColor,
-  getMiniMapNodeImage,
   getMiniMapNodeStroke,
+  getNodeResizerZoom,
   getSelectedUsersForNode,
   handleCanvasContextMenu,
   handleCanvasPointerDown,
   handleCanvasPointerLeave,
   handleCanvasPointerMove,
-  handleCanvasViewportInteraction,
   handleConnect,
   handleCreateDragStart,
   handleCreateDrop,
@@ -53,6 +51,7 @@ const {
   handleSelectionDrag,
   handleSelectionDragStop,
   handleViewportMove,
+  handleViewportMoveEnd,
   hasError,
   isValidSectionConnection,
   isFlowLoading,
@@ -62,7 +61,6 @@ const {
   isLassoSelecting,
   isResizingNode,
   isNodeSelected,
-  isSingleNodeSelection,
   lassoPreviewRects,
   joinPresence,
   loginNameInput,
@@ -80,12 +78,10 @@ const {
   remoteCursors,
   resizeNode,
   resizeNodePreview,
-  rightSelection,
-  scheduleGraphSnapshot,
   selectedBoundsStyle,
   selectedLabel,
-  selectionBoxStyle,
   setCreateMode,
+  shouldShowNodeResizer,
   startNodeResize,
   status,
   submitNodeData,
@@ -182,7 +178,6 @@ const {
         @pointerdown.capture="handleCanvasPointerDown"
         @pointerleave="handleCanvasPointerLeave"
         @pointermove="handleCanvasPointerMove"
-        @wheel.capture="handleCanvasViewportInteraction"
       >
         <div v-if="hasError" class="error-bar">{{ errorMessage }}</div>
         <div v-if="isFlowLoading" class="loading-mask">
@@ -234,9 +229,7 @@ const {
           @edge-click="handleEdgeClick"
           @edge-update="handleEdgeUpdate"
           @move="handleViewportMove"
-          @move-end="scheduleGraphSnapshot(500)"
-          @viewport-change="handleViewportMove"
-          @viewport-change-end="handleViewportMove"
+          @move-end="handleViewportMoveEnd"
           @node-context-menu="openNodeContextMenu"
           @node-click="handleNodeClick"
           @node-drag-start="handleNodeDragStart"
@@ -258,9 +251,9 @@ const {
               :id="id"
               :data="data"
               :selected="!isLassoSelecting && isNodeSelected(id)"
-              :show-resizer="!isLassoSelecting && isSingleNodeSelection && isNodeSelected(id)"
+              :show-resizer="shouldShowNodeResizer(id)"
               :selected-users="getSelectedUsersForNode(id)"
-              :viewport-zoom="currentViewport.zoom"
+              :viewport-zoom="getNodeResizerZoom(id)"
               :readonly-preview="!isLoggedIn"
               @update-title="(nodeId, value) => submitNodeData(nodeId, 'title', value)"
               @update-body="(nodeId, value) => submitNodeData(nodeId, 'body', value)"
@@ -278,9 +271,9 @@ const {
               :id="id"
               :data="data"
               :selected="!isLassoSelecting && isNodeSelected(id)"
-              :show-resizer="!isLassoSelecting && isSingleNodeSelection && isNodeSelected(id)"
+              :show-resizer="shouldShowNodeResizer(id)"
               :selected-users="getSelectedUsersForNode(id)"
-              :viewport-zoom="currentViewport.zoom"
+              :viewport-zoom="getNodeResizerZoom(id)"
               :readonly-preview="!isLoggedIn"
               @update-title="(nodeId, value) => submitNodeData(nodeId, 'title', value)"
               @update-body="(nodeId, value) => submitNodeData(nodeId, 'body', value)"
@@ -300,77 +293,10 @@ const {
             position="bottom-right"
             :node-color="getMiniMapNodeColor"
             :node-stroke-color="getMiniMapNodeStroke"
-            :node-stroke-width="8"
-          >
-            <template #node-item="{ id, position, dimensions }">
-              <g class="minimap-rich-node" :class="{ selected: isNodeSelected(id) }">
-                <rect
-                  :x="position.x"
-                  :y="position.y"
-                  :width="dimensions.width"
-                  :height="dimensions.height"
-                  rx="8"
-                  fill="#f8fafc"
-                  :stroke="isNodeSelected(id) ? '#1a73e8' : '#94a3b8'"
-                  stroke-width="8"
-                />
-                <image
-                  v-if="getMiniMapNodeImage(id)"
-                  :href="getMiniMapNodeImage(id)"
-                  :x="position.x + dimensions.width * 0.08"
-                  :y="position.y + dimensions.height * 0.42"
-                  :width="dimensions.width * 0.84"
-                  :height="dimensions.height * 0.48"
-                  preserveAspectRatio="xMidYMid slice"
-                />
-                <rect
-                  :x="position.x + dimensions.width * 0.08"
-                  :y="position.y + dimensions.height * 0.12"
-                  :width="dimensions.width * 0.62"
-                  :height="Math.max(8, dimensions.height * 0.08)"
-                  rx="4"
-                  fill="#1f2937"
-                  opacity="0.82"
-                />
-                <rect
-                  :x="position.x + dimensions.width * 0.08"
-                  :y="position.y + dimensions.height * 0.26"
-                  :width="dimensions.width * 0.78"
-                  :height="Math.max(6, dimensions.height * 0.05)"
-                  rx="3"
-                  fill="#64748b"
-                  opacity="0.72"
-                />
-              </g>
-            </template>
-            <template #node-section="{ id, position, dimensions }">
-              <g class="minimap-rich-section" :class="{ selected: isNodeSelected(id) }">
-                <rect
-                  :x="position.x"
-                  :y="position.y"
-                  :width="dimensions.width"
-                  :height="dimensions.height"
-                  rx="14"
-                  fill="#d1fae5"
-                  :stroke="isNodeSelected(id) ? '#1a73e8' : '#0f766e'"
-                  stroke-width="12"
-                  stroke-dasharray="24 18"
-                />
-                <rect
-                  :x="position.x + 22"
-                  :y="position.y + 22"
-                  :width="Math.max(36, dimensions.width * 0.22)"
-                  :height="Math.max(18, dimensions.height * 0.04)"
-                  rx="8"
-                  fill="#0f766e"
-                  opacity="0.85"
-                />
-              </g>
-            </template>
-          </MiniMap>
+            :node-stroke-width="4"
+          />
         </VueFlow>
 
-        <div v-if="rightSelection" class="right-drag-selection" :style="selectionBoxStyle"></div>
         <div v-if="lassoPreviewRects.length" class="lasso-preview-layer" aria-hidden="true">
           <span
             v-for="rect in lassoPreviewRects"

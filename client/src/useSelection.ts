@@ -39,27 +39,14 @@ type LassoPointerRect = {
 export function useSelection(runtime: FlowRuntime) {
   let lassoBoundsCache: LassoNodeBounds[] = [];
   let pendingLassoRect: LassoPointerRect | null = null;
-  let lastLassoPreviewKey = "";
-
-  const selectionBoxStyle = computed(() => {
-    const selection = runtime.rightSelection.value;
-
-    if (!selection) {
-      return {};
-    }
-
-    const left = Math.min(selection.startLocalX, selection.currentLocalX);
-    const top = Math.min(selection.startLocalY, selection.currentLocalY);
-    const width = Math.abs(selection.currentLocalX - selection.startLocalX);
-    const height = Math.abs(selection.currentLocalY - selection.startLocalY);
-
-    return {
-      left: `${left}px`,
-      top: `${top}px`,
-      width: `${width}px`,
-      height: `${height}px`
-    };
-  });
+  let lassoPanelOrigin = { left: 0, top: 0 };
+  let lassoPointerCaptureTarget: HTMLElement | null = null;
+  let lassoSelectionBox: HTMLDivElement | null = null;
+  let selectionMovePointerCaptureTarget: HTMLElement | null = null;
+  let hasPendingCursorClientPoint = false;
+  let pendingCursorClientX = 0;
+  let pendingCursorClientY = 0;
+  let cursorCoordinateFrame: number | undefined;
 
   const selectedBoundsStyle = computed<Record<string, string> | null>(() => {
     if (
@@ -70,31 +57,53 @@ export function useSelection(runtime: FlowRuntime) {
       return null;
     }
 
+    const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
+    if (selectionMoveDrag?.selectedBounds) {
+      runtime.selectionBoundsVersion.value;
+      const deltaX = selectionMoveDrag.currentClientX - selectionMoveDrag.startClientX;
+      const deltaY = selectionMoveDrag.currentClientY - selectionMoveDrag.startClientY;
+
+      return {
+        left: `${selectionMoveDrag.selectedBounds.left + deltaX}px`,
+        top: `${selectionMoveDrag.selectedBounds.top + deltaY}px`,
+        width: `${selectionMoveDrag.selectedBounds.width}px`,
+        height: `${selectionMoveDrag.selectedBounds.height}px`
+      };
+    }
+
     runtime.selectionBoundsVersion.value;
     const graphNodes = getCurrentSyncNodes();
     const graph = createGraphCache(graphNodes);
-    const selectedBounds = graphNodes
-      .filter((node) => runtime.selectedNodeIds.value.has(node.id))
-      .map((node) => {
-        const bounds = getNodeBounds(node, graph);
-        const viewport = runtime.currentViewport.value;
+    const selectedIds = runtime.selectedNodeIds.value;
+    const viewport = runtime.currentViewport.value;
+    let selectedCount = 0;
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
 
-        return {
-          x: bounds.x * viewport.zoom + viewport.x,
-          y: bounds.y * viewport.zoom + viewport.y,
-          width: bounds.width * viewport.zoom,
-          height: bounds.height * viewport.zoom
-        };
-      });
+    for (const node of graphNodes) {
+      if (!selectedIds.has(node.id)) {
+        continue;
+      }
 
-    if (selectedBounds.length === 0) {
+      const bounds = getNodeBounds(node, graph);
+      const x = bounds.x * viewport.zoom + viewport.x;
+      const y = bounds.y * viewport.zoom + viewport.y;
+      const width = bounds.width * viewport.zoom;
+      const height = bounds.height * viewport.zoom;
+
+      selectedCount += 1;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x + width);
+      maxY = Math.max(maxY, y + height);
+    }
+
+    if (selectedCount === 0) {
       return null;
     }
 
-    const minX = Math.min(...selectedBounds.map((bounds) => bounds.x));
-    const minY = Math.min(...selectedBounds.map((bounds) => bounds.y));
-    const maxX = Math.max(...selectedBounds.map((bounds) => bounds.x + bounds.width));
-    const maxY = Math.max(...selectedBounds.map((bounds) => bounds.y + bounds.height));
     const padding = 4;
 
     return {
@@ -114,10 +123,14 @@ export function useSelection(runtime: FlowRuntime) {
 
     const viewport = runtime.currentViewport.value;
     const previewIds = runtime.lassoPreviewNodeIds.value;
+    const rects: Array<{ id: string; style: Record<string, string> }> = [];
 
-    return lassoBoundsCache
-      .filter((bounds) => previewIds.has(bounds.id))
-      .map((bounds) => ({
+    for (const bounds of lassoBoundsCache) {
+      if (!previewIds.has(bounds.id)) {
+        continue;
+      }
+
+      rects.push({
         id: bounds.id,
         style: {
           left: `${bounds.x * viewport.zoom + viewport.x}px`,
@@ -125,7 +138,10 @@ export function useSelection(runtime: FlowRuntime) {
           width: `${bounds.width * viewport.zoom}px`,
           height: `${bounds.height * viewport.zoom}px`
         }
-      }));
+      });
+    }
+
+    return rects;
   });
 
   function getCurrentSyncNodes() {
@@ -223,14 +239,55 @@ export function useSelection(runtime: FlowRuntime) {
   }
 
   function setLassoPreviewNodes(nodeIds: string[]) {
-    const nextKey = nodeIds.join("\u0000");
-
-    if (nextKey === lastLassoPreviewKey) {
+    if (areIdsEqual(runtime.lassoPreviewNodeIds.value, nodeIds)) {
       return;
     }
 
-    lastLassoPreviewKey = nextKey;
     runtime.lassoPreviewNodeIds.value = new Set(nodeIds);
+  }
+
+  function ensureLassoSelectionBox() {
+    if (lassoSelectionBox) {
+      return lassoSelectionBox;
+    }
+
+    lassoSelectionBox = document.createElement("div");
+    lassoSelectionBox.className = "right-drag-selection";
+    document.body.appendChild(lassoSelectionBox);
+
+    return lassoSelectionBox;
+  }
+
+  function paintLassoSelectionBox(selection: NonNullable<typeof runtime.rightSelection.value>) {
+    const element = ensureLassoSelectionBox();
+
+    const left = Math.min(selection.startClientX, selection.currentClientX);
+    const top = Math.min(selection.startClientY, selection.currentClientY);
+    const width = Math.abs(selection.currentClientX - selection.startClientX);
+    const height = Math.abs(selection.currentClientY - selection.startClientY);
+
+    element.style.display = "block";
+    element.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+    element.style.width = `${width}px`;
+    element.style.height = `${height}px`;
+  }
+
+  function resetLassoSelectionBox() {
+    const element = lassoSelectionBox;
+
+    if (!element) {
+      return;
+    }
+
+    element.style.display = "none";
+    element.style.transform = "translate3d(0, 0, 0)";
+    element.style.width = "0px";
+    element.style.height = "0px";
+  }
+
+  function removeLassoSelectionBox() {
+    lassoSelectionBox?.remove();
+    lassoSelectionBox = null;
   }
 
   function selectOnlyNode(nodeId: string) {
@@ -418,29 +475,31 @@ export function useSelection(runtime: FlowRuntime) {
   }
 
   function getFlowSelectionBounds(rect: LassoPointerRect) {
-    const topLeft = runtime.screenToFlowCoordinate({
-      x: Math.min(rect.startClientX, rect.currentClientX),
-      y: Math.min(rect.startClientY, rect.currentClientY)
-    });
-    const bottomRight = runtime.screenToFlowCoordinate({
-      x: Math.max(rect.startClientX, rect.currentClientX),
-      y: Math.max(rect.startClientY, rect.currentClientY)
-    });
+    const viewport = runtime.currentViewport.value;
+    const localLeft = Math.min(rect.startClientX, rect.currentClientX) - lassoPanelOrigin.left;
+    const localTop = Math.min(rect.startClientY, rect.currentClientY) - lassoPanelOrigin.top;
+    const localRight = Math.max(rect.startClientX, rect.currentClientX) - lassoPanelOrigin.left;
+    const localBottom = Math.max(rect.startClientY, rect.currentClientY) - lassoPanelOrigin.top;
 
     return {
-      x: topLeft.x,
-      y: topLeft.y,
-      width: bottomRight.x - topLeft.x,
-      height: bottomRight.y - topLeft.y
+      x: (localLeft - viewport.x) / viewport.zoom,
+      y: (localTop - viewport.y) / viewport.zoom,
+      width: (localRight - localLeft) / viewport.zoom,
+      height: (localBottom - localTop) / viewport.zoom
     };
   }
 
   function getLassoSelectedIds(rect: LassoPointerRect) {
     const selectionBounds = getFlowSelectionBounds(rect);
+    const selectedIds: string[] = [];
 
-    return lassoBoundsCache
-      .filter((bounds) => hasGraphBoundsOverlap(bounds, selectionBounds))
-      .map((bounds) => bounds.id);
+    for (const bounds of lassoBoundsCache) {
+      if (hasGraphBoundsOverlap(bounds, selectionBounds)) {
+        selectedIds.push(bounds.id);
+      }
+    }
+
+    return selectedIds;
   }
 
   function updateLassoPreview(rect: LassoPointerRect) {
@@ -484,10 +543,10 @@ export function useSelection(runtime: FlowRuntime) {
     }
 
     pendingLassoRect = null;
-    lastLassoPreviewKey = "";
     lassoBoundsCache = [];
     runtime.isLassoSelecting.value = false;
     runtime.lassoPreviewNodeIds.value = new Set();
+    resetLassoSelectionBox();
   }
 
   function handleCanvasPointerDown(event: PointerEvent) {
@@ -557,10 +616,18 @@ export function useSelection(runtime: FlowRuntime) {
 
     const panel = event.currentTarget as HTMLElement;
     const rect = panel.getBoundingClientRect();
+    lassoPanelOrigin = { left: rect.left, top: rect.top };
+    lassoPointerCaptureTarget = panel;
+    if (typeof panel.setPointerCapture === "function") {
+      try {
+        panel.setPointerCapture(event.pointerId);
+      } catch {
+        lassoPointerCaptureTarget = null;
+      }
+    }
     rebuildLassoBoundsCache();
     runtime.isLassoSelecting.value = true;
     runtime.lassoPreviewNodeIds.value = new Set();
-    lastLassoPreviewKey = "";
     runtime.rightSelection.value = {
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -571,21 +638,52 @@ export function useSelection(runtime: FlowRuntime) {
       currentLocalX: event.clientX - rect.left,
       currentLocalY: event.clientY - rect.top
     };
-    window.addEventListener("pointermove", handleRightSelectionMove);
-    window.addEventListener("pointerup", handleRightSelectionEnd, { once: true });
+    paintLassoSelectionBox(runtime.rightSelection.value);
+    window.addEventListener("pointermove", handleRightSelectionMove, { capture: true });
+    window.addEventListener("pointerup", handleRightSelectionEnd, { capture: true, once: true });
   }
 
   function isPointInsideSelectedBounds(event: PointerEvent | MouseEvent) {
+    if (runtime.selectedNodeIds.value.size < 2) {
+      return false;
+    }
+
     const selectedBounds = getSelectedClientBounds();
 
     return Boolean(
       selectedBounds &&
-        getSelectedNodeIds().length > 1 &&
         event.clientX >= selectedBounds.left &&
         event.clientX <= selectedBounds.right &&
         event.clientY >= selectedBounds.top &&
         event.clientY <= selectedBounds.bottom
     );
+  }
+
+  function scheduleCoalescedCursorUpdate(clientX: number, clientY: number) {
+    hasPendingCursorClientPoint = true;
+    pendingCursorClientX = clientX;
+    pendingCursorClientY = clientY;
+
+    if (cursorCoordinateFrame) {
+      return;
+    }
+
+    cursorCoordinateFrame = window.requestAnimationFrame(() => {
+      cursorCoordinateFrame = undefined;
+      const shouldUpdateCursor = hasPendingCursorClientPoint;
+      const nextClientX = pendingCursorClientX;
+      const nextClientY = pendingCursorClientY;
+      hasPendingCursorClientPoint = false;
+
+      if (!shouldUpdateCursor || !runtime.isLoggedIn.value) {
+        return;
+      }
+
+      getAction<(position: { x: number; y: number }) => void>(
+        runtime,
+        "scheduleCursorUpdate"
+      )(runtime.screenToFlowCoordinate({ x: nextClientX, y: nextClientY }));
+    });
   }
 
   function handleRightSelectionMove(event: PointerEvent) {
@@ -595,16 +693,13 @@ export function useSelection(runtime: FlowRuntime) {
       return;
     }
 
-    const panel = document.querySelector<HTMLElement>(".canvas-panel");
-    const rect = panel?.getBoundingClientRect();
-
+    event.preventDefault();
+    event.stopImmediatePropagation();
     selection.currentClientX = event.clientX;
     selection.currentClientY = event.clientY;
-
-    if (rect) {
-      selection.currentLocalX = event.clientX - rect.left;
-      selection.currentLocalY = event.clientY - rect.top;
-    }
+    selection.currentLocalX = event.clientX - lassoPanelOrigin.left;
+    selection.currentLocalY = event.clientY - lassoPanelOrigin.top;
+    paintLassoSelectionBox(selection);
 
     if (
       Math.abs(selection.currentClientX - selection.startClientX) > 4 ||
@@ -621,10 +716,15 @@ export function useSelection(runtime: FlowRuntime) {
   }
 
   function handleRightSelectionEnd(event: PointerEvent) {
-    window.removeEventListener("pointermove", handleRightSelectionMove);
+    window.removeEventListener("pointermove", handleRightSelectionMove, true);
 
     const selection = runtime.rightSelection.value;
     runtime.rightSelection.value = null;
+    resetLassoSelectionBox();
+    if (lassoPointerCaptureTarget?.hasPointerCapture(event.pointerId)) {
+      lassoPointerCaptureTarget.releasePointerCapture(event.pointerId);
+    }
+    lassoPointerCaptureTarget = null;
 
     if (!selection) {
       return;
@@ -637,7 +737,7 @@ export function useSelection(runtime: FlowRuntime) {
     }
 
     event.preventDefault();
-    event.stopPropagation();
+    event.stopImmediatePropagation();
     flushLassoPreview({
       startClientX: selection.startClientX,
       startClientY: selection.startClientY,
@@ -673,6 +773,95 @@ export function useSelection(runtime: FlowRuntime) {
     );
   }
 
+  function getSelectedBoundsSnapshot() {
+    const style = selectedBoundsStyle.value;
+
+    if (!style) {
+      return null;
+    }
+
+    return {
+      left: Number.parseFloat(style.left),
+      top: Number.parseFloat(style.top),
+      width: Number.parseFloat(style.width),
+      height: Number.parseFloat(style.height)
+    };
+  }
+
+  function buildSelectionDragPreviewNodes() {
+    const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
+
+    if (!selectionMoveDrag) {
+      return null;
+    }
+
+    const viewport = runtime.currentViewport.value;
+    const deltaX = (selectionMoveDrag.currentClientX - selectionMoveDrag.startClientX) / viewport.zoom;
+    const deltaY = (selectionMoveDrag.currentClientY - selectionMoveDrag.startClientY) / viewport.zoom;
+    const nextNodes = selectionMoveDrag.originalNodes.slice() as FlowNode[];
+
+    selectionMoveDrag.movingIndexes.forEach((index) => {
+      const node = selectionMoveDrag.originalNodes[index];
+
+      if (!node) {
+        return;
+      }
+
+      nextNodes[index] = {
+        ...node,
+        position: {
+          x: Math.round(node.position.x + deltaX),
+          y: Math.round(node.position.y + deltaY)
+        }
+      } as FlowNode;
+    });
+
+    return nextNodes;
+  }
+
+  function applySelectionMoveFrame() {
+    const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
+
+    if (!selectionMoveDrag) {
+      return;
+    }
+
+    selectionMoveDrag.frame = undefined;
+    const nextNodes = buildSelectionDragPreviewNodes();
+
+    if (!nextNodes) {
+      return;
+    }
+
+    runtime.nodes.value = nextNodes;
+    runtime.selectionBoundsVersion.value += 1;
+  }
+
+  function scheduleSelectionMoveFrame() {
+    const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
+
+    if (!selectionMoveDrag || selectionMoveDrag.frame) {
+      return;
+    }
+
+    selectionMoveDrag.frame = window.requestAnimationFrame(applySelectionMoveFrame);
+  }
+
+  function flushSelectionMoveFrame() {
+    const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
+
+    if (!selectionMoveDrag) {
+      return;
+    }
+
+    if (selectionMoveDrag.frame) {
+      window.cancelAnimationFrame(selectionMoveDrag.frame);
+      selectionMoveDrag.frame = undefined;
+    }
+
+    applySelectionMoveFrame();
+  }
+
   function handleSelectedBoundsPointerDown(event: PointerEvent) {
     if (!runtime.isLoggedIn.value || event.button !== 0) {
       return;
@@ -688,16 +877,38 @@ export function useSelection(runtime: FlowRuntime) {
     event.stopPropagation();
     closeContextMenu();
 
-    const originalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode);
+    const normalizedOriginalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode);
+    const originalNodes = withSelectionState(
+      normalizedOriginalNodes.map(stripParentExtent) as FlowNode[]
+    );
+    const movingIds = getMovableSelectedIds(normalizedOriginalNodes);
+    const movingIndexes = originalNodes
+      .map((node, index) => (movingIds.has(node.id) ? index : -1))
+      .filter((index) => index >= 0);
+    const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+
+    selectionMovePointerCaptureTarget = target;
+    if (target && typeof target.setPointerCapture === "function") {
+      try {
+        target.setPointerCapture(event.pointerId);
+      } catch {
+        selectionMovePointerCaptureTarget = null;
+      }
+    }
+
     runtime.interaction.selectionMoveDrag = {
       startClientX: event.clientX,
       startClientY: event.clientY,
+      currentClientX: event.clientX,
+      currentClientY: event.clientY,
       originalNodes,
-      movingIds: getMovableSelectedIds(originalNodes)
+      movingIds,
+      movingIndexes,
+      selectedBounds: getSelectedBoundsSnapshot()
     };
     runtime.isMovingSelection.value = true;
-    window.addEventListener("pointermove", handleSelectedBoundsPointerMove);
-    window.addEventListener("pointerup", handleSelectedBoundsPointerUp, { once: true });
+    window.addEventListener("pointermove", handleSelectedBoundsPointerMove, { capture: true });
+    window.addEventListener("pointerup", handleSelectedBoundsPointerUp, { capture: true, once: true });
   }
 
   function handleSelectedBoundsPointerMove(event: PointerEvent) {
@@ -708,41 +919,36 @@ export function useSelection(runtime: FlowRuntime) {
     }
 
     event.preventDefault();
-    const viewport = runtime.currentViewport.value;
-    const deltaX = (event.clientX - selectionMoveDrag.startClientX) / viewport.zoom;
-    const deltaY = (event.clientY - selectionMoveDrag.startClientY) / viewport.zoom;
-
-    runtime.nodes.value = withSelectionState(
-      selectionMoveDrag.originalNodes.map((node) =>
-        selectionMoveDrag.movingIds.has(node.id)
-          ? ({
-              ...node,
-              position: {
-                x: Math.round(node.position.x + deltaX),
-                y: Math.round(node.position.y + deltaY)
-              }
-            } as FlowNode)
-          : (node as FlowNode)
-      )
-    );
-    scheduleSelectionBoundsRefresh();
+    event.stopImmediatePropagation();
+    selectionMoveDrag.currentClientX = event.clientX;
+    selectionMoveDrag.currentClientY = event.clientY;
+    scheduleSelectionMoveFrame();
   }
 
   function handleSelectedBoundsPointerUp(event: PointerEvent) {
-    window.removeEventListener("pointermove", handleSelectedBoundsPointerMove);
+    window.removeEventListener("pointermove", handleSelectedBoundsPointerMove, true);
     runtime.isResizingNode.value = false;
 
     const drag = runtime.interaction.selectionMoveDrag;
+    if (drag) {
+      drag.currentClientX = event.clientX;
+      drag.currentClientY = event.clientY;
+    }
+    flushSelectionMoveFrame();
     runtime.interaction.selectionMoveDrag = null;
     runtime.isMovingSelection.value = false;
     scheduleSelectionBoundsRefresh();
+    if (selectionMovePointerCaptureTarget?.hasPointerCapture(event.pointerId)) {
+      selectionMovePointerCaptureTarget.releasePointerCapture(event.pointerId);
+    }
+    selectionMovePointerCaptureTarget = null;
 
     if (!drag) {
       return;
     }
 
     event.preventDefault();
-    event.stopPropagation();
+    event.stopImmediatePropagation();
     commitMovedSelectedNodes(drag.movingIds);
   }
 
@@ -756,10 +962,11 @@ export function useSelection(runtime: FlowRuntime) {
 
     const nextNodes = getCurrentSyncNodes();
     const nextEdges = getCurrentSyncEdges(nextNodes);
+    const previousNodesById = new Map(document.data.nodes.map((node) => [node.id, node]));
 
-    movingIds.forEach((nodeId) => {
+    Array.from(movingIds).forEach((nodeId) => {
       const graph = createGraphCache(nextNodes, nextEdges);
-      const node = nextNodes.find((candidate) => candidate.id === nodeId);
+      const node = graph.nodeById.get(nodeId);
 
       if (!node) {
         return;
@@ -771,7 +978,7 @@ export function useSelection(runtime: FlowRuntime) {
         getNodeSize(node, node.type === "section" ? 720 : 240, node.type === "section" ? 620 : 190),
         nextNodes,
         nextEdges,
-        document.data.nodes.find((candidate) => candidate.id === node.id)
+        previousNodesById.get(node.id)
       );
     });
 
@@ -817,25 +1024,45 @@ export function useSelection(runtime: FlowRuntime) {
       return;
     }
 
-    runtime.currentViewport.value = runtime.toObject().viewport;
-    runtime.isHoveringSelection.value =
+    const shouldCheckSelectionBounds =
+      runtime.selectedNodeIds.value.size > 1 &&
       !runtime.interaction.selectionMoveDrag &&
-      isCanvasSelectionTarget(event.target) &&
-      isPointInsideSelectedBounds(event);
-    getAction<(position: { x: number; y: number }) => void>(
-      runtime,
-      "scheduleCursorUpdate"
-    )(runtime.screenToFlowCoordinate({ x: event.clientX, y: event.clientY }));
+      isCanvasSelectionTarget(event.target);
+    const nextIsHoveringSelection =
+      shouldCheckSelectionBounds && isPointInsideSelectedBounds(event);
+
+    if (runtime.isHoveringSelection.value !== nextIsHoveringSelection) {
+      runtime.isHoveringSelection.value = nextIsHoveringSelection;
+    }
+
+    scheduleCoalescedCursorUpdate(event.clientX, event.clientY);
   }
 
   function handleCanvasPointerLeave() {
-    runtime.isHoveringSelection.value = false;
+    if (runtime.isHoveringSelection.value) {
+      runtime.isHoveringSelection.value = false;
+    }
   }
 
   function cleanupSelection() {
-    window.removeEventListener("pointermove", handleRightSelectionMove);
-    window.removeEventListener("pointermove", handleSelectedBoundsPointerMove);
+    window.removeEventListener("pointermove", handleRightSelectionMove, true);
+    window.removeEventListener("pointerup", handleRightSelectionEnd, true);
+    window.removeEventListener("pointermove", handleSelectedBoundsPointerMove, true);
+    window.removeEventListener("pointerup", handleSelectedBoundsPointerUp, true);
+    if (runtime.interaction.selectionMoveDrag?.frame) {
+      window.cancelAnimationFrame(runtime.interaction.selectionMoveDrag.frame);
+      runtime.interaction.selectionMoveDrag.frame = undefined;
+    }
+    if (cursorCoordinateFrame) {
+      window.cancelAnimationFrame(cursorCoordinateFrame);
+      cursorCoordinateFrame = undefined;
+    }
+    hasPendingCursorClientPoint = false;
+    runtime.interaction.selectionMoveDrag = null;
+    selectionMovePointerCaptureTarget = null;
+    lassoPointerCaptureTarget = null;
     clearLassoPreview();
+    removeLassoSelectionBox();
   }
 
   return {
@@ -858,7 +1085,6 @@ export function useSelection(runtime: FlowRuntime) {
     lassoPreviewRects,
     selectOnlyNode,
     selectedBoundsStyle,
-    selectionBoxStyle,
     setSelectedNodes
   };
 }

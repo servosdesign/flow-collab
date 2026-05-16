@@ -51,6 +51,7 @@ function userInitials(name: string) {
 <template>
   <div class="sync-node section-node" :class="{ selected }">
     <div
+      v-if="showResizer"
       class="node-resizer-layer"
       @mousedown.stop
       @pointerdown.stop
@@ -58,7 +59,7 @@ function userInitials(name: string) {
     >
       <NodeResizer
         :node-id="id"
-        :is-visible="showResizer"
+        :is-visible="true"
         :min-width="360"
         :min-height="240"
         :auto-scale="false"

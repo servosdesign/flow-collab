@@ -1,5 +1,8 @@
 import type { FlowRuntime } from "./flowRuntime";
 
+type ViewportLike = { x: number; y: number; zoom: number };
+type MovePayload = { flowTransform?: ViewportLike } | ViewportLike;
+
 export function useViewport(runtime: FlowRuntime) {
   function updateCanvasSize() {
     const bounds = runtime.canvasPanel.value?.getBoundingClientRect();
@@ -26,18 +29,43 @@ export function useViewport(runtime: FlowRuntime) {
     });
   }
 
-  function refreshSelectionBounds() {
-    runtime.currentViewport.value = runtime.toObject().viewport;
-    scheduleSelectionBoundsRefresh();
+  function getViewportFromPayload(payload?: MovePayload) {
+    if (!payload) {
+      return runtime.toObject().viewport;
+    }
+
+    if ("x" in payload && "y" in payload && "zoom" in payload) {
+      return payload;
+    }
+
+    if ("flowTransform" in payload && payload.flowTransform) {
+      return payload.flowTransform;
+    }
+
+    return runtime.currentViewport.value;
   }
 
-  function handleViewportMove() {
-    refreshSelectionBounds();
-    updateCanvasSize();
+  function needsViewportSelectionBoundsRefresh() {
+    return (
+      runtime.selectedNodeIds.value.size > 1 ||
+      runtime.isLassoSelecting.value ||
+      runtime.lassoPreviewNodeIds.value.size > 0 ||
+      runtime.rightSelection.value !== null ||
+      runtime.interaction.selectionMoveDrag !== null ||
+      runtime.isMovingSelection.value
+    );
   }
 
-  function handleCanvasViewportInteraction() {
-    window.requestAnimationFrame(refreshSelectionBounds);
+  function refreshSelectionBounds(payload?: MovePayload) {
+    runtime.currentViewport.value = getViewportFromPayload(payload);
+
+    if (needsViewportSelectionBoundsRefresh()) {
+      scheduleSelectionBoundsRefresh();
+    }
+  }
+
+  function handleViewportMove(payload?: MovePayload) {
+    refreshSelectionBounds(payload);
   }
 
   function cleanupViewport() {
@@ -49,7 +77,6 @@ export function useViewport(runtime: FlowRuntime) {
 
   return {
     cleanupViewport,
-    handleCanvasViewportInteraction,
     handleViewportMove,
     refreshSelectionBounds,
     scheduleSelectionBoundsRefresh,

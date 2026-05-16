@@ -71,7 +71,6 @@ export function useFlowSyncApp() {
   const viewport = installActions(runtime, useViewport(runtime));
   const {
     cleanupViewport,
-    handleCanvasViewportInteraction,
     handleViewportMove,
     updateCanvasSize
   } = viewport;
@@ -119,8 +118,7 @@ export function useFlowSyncApp() {
     isNodeSelected,
     isSingleNodeSelection,
     lassoPreviewRects,
-    selectedBoundsStyle,
-    selectionBoxStyle
+    selectedBoundsStyle
   } = selection;
   const contextMenu = installActions(runtime, useContextMenu(runtime));
   const {
@@ -195,14 +193,6 @@ export function useFlowSyncApp() {
     return selectedUsersByNodeId.value.get(nodeId) ?? emptySelectedUsers;
   }
 
-  function getMiniMapNode(nodeId: string) {
-    return nodes.value.find((node) => node.id === nodeId);
-  }
-
-  function getMiniMapNodeImage(nodeId: string) {
-    return getMiniMapNode(nodeId)?.data?.imageUrl ?? "";
-  }
-
   function getMiniMapNodeColor(node: { id?: string; type?: string; selected?: boolean }) {
     if ((node.id && isNodeSelected(node.id)) || node.selected) {
       return "#dbeafe";
@@ -217,6 +207,23 @@ export function useFlowSyncApp() {
     }
 
     return node.type === "section" ? "#0f766e" : "#94a3b8";
+  }
+
+  function shouldShowNodeResizer(nodeId: string) {
+    return !isLassoSelecting.value && isSingleNodeSelection.value && isNodeSelected(nodeId);
+  }
+
+  function getNodeResizerZoom(nodeId: string) {
+    if (!shouldShowNodeResizer(nodeId)) {
+      return undefined;
+    }
+
+    return currentViewport.value.zoom;
+  }
+
+  function handleViewportMoveEnd(payload?: Parameters<typeof handleViewportMove>[0]) {
+    handleViewportMove(payload);
+    scheduleGraphSnapshot(500);
   }
 
   onMounted(() => {
@@ -300,14 +307,13 @@ export function useFlowSyncApp() {
     errorMessage,
     getCursorStyle,
     getMiniMapNodeColor,
-    getMiniMapNodeImage,
     getMiniMapNodeStroke,
+    getNodeResizerZoom,
     getSelectedUsersForNode,
     handleCanvasContextMenu,
     handleCanvasPointerDown,
     handleCanvasPointerLeave,
     handleCanvasPointerMove,
-    handleCanvasViewportInteraction,
     handleConnect,
     handleCreateDragStart,
     handleCreateDrop,
@@ -323,6 +329,7 @@ export function useFlowSyncApp() {
     handleSelectionDrag,
     handleSelectionDragStop,
     handleViewportMove,
+    handleViewportMoveEnd,
     hasError,
     isValidSectionConnection,
     isFlowLoading,
@@ -354,8 +361,8 @@ export function useFlowSyncApp() {
     scheduleGraphSnapshot,
     selectedBoundsStyle,
     selectedLabel,
-    selectionBoxStyle,
     setCreateMode,
+    shouldShowNodeResizer,
     startNodeResize,
     status,
     submitNodeData,
