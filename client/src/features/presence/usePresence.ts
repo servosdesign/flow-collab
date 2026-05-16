@@ -2,7 +2,7 @@ import { computed } from "vue";
 import type { SyncPresenceDocument, SyncPresenceUser } from "@vue-flow-sync/shared";
 import { loginUser } from "../../api";
 import type { FlowEditorServices } from "../../app/flowEditorServices";
-import { cloneJson } from "../../domain/graph";
+import { cloneJson, type FlowNode } from "../../domain/graph";
 import { randomUserColor } from "../../flowState";
 import type { FlowRuntime } from "../../flowRuntime";
 
@@ -149,6 +149,7 @@ export function usePresence(runtime: FlowRuntime, services: FlowEditorServices) 
     runtime.userId.value = crypto.randomUUID();
     runtime.userColor.value = randomUserColor();
     runtime.selectedNodeIds.value = new Set();
+    runtime.nodes.value = services.withSelectionState(runtime.nodes.value as FlowNode[]);
     services.closeContextMenu();
   }
 

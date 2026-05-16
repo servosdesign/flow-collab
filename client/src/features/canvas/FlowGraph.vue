@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Background } from "@vue-flow/background";
 import {
   ConnectionLineType,
   ConnectionMode,
@@ -10,6 +9,7 @@ import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 import { useFlowGraphContext } from "../../app/flowEditorContext";
 import ConnectionPreviewLine from "../edges/ConnectionPreviewLine.vue";
+import FlowGridBackground from "./FlowGridBackground.vue";
 import FlowItemNodeSlot from "./FlowItemNodeSlot.vue";
 import FlowMiniMap from "./FlowMiniMap.vue";
 import FlowSectionNodeSlot from "./FlowSectionNodeSlot.vue";
@@ -90,7 +90,7 @@ const {
       <FlowItemNodeSlot :id="id" :data="data" />
     </template>
 
-    <Background pattern-color="#d6dde6" :gap="18" />
+    <FlowGridBackground />
     <FlowMiniMap />
   </VueFlow>
 </template>

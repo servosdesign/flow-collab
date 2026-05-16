@@ -15,10 +15,18 @@ export function useGraphState(runtime: FlowRuntime) {
     return flowNodes.map((node) => {
       const classNames = (typeof node.class === "string" ? node.class.split(/\s+/) : [])
         .filter(Boolean)
-        .filter((className) => className !== "nested-flow-node");
+        .filter(
+          (className) =>
+            className !== "nested-flow-node" &&
+            className !== "selection-selected-node"
+        );
 
       if (node.parentNode) {
         classNames.push("nested-flow-node");
+      }
+
+      if (runtime.selectedNodeIds.value.has(node.id)) {
+        classNames.push("selection-selected-node");
       }
 
       return {

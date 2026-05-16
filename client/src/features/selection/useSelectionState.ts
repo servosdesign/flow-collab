@@ -1,6 +1,6 @@
 import { nextTick } from "vue";
 import type { FlowEditorServices } from "../../app/flowEditorServices";
-import type { FlowEdge } from "../../domain/graph";
+import type { FlowEdge, FlowNode } from "../../domain/graph";
 import type { FlowRuntime } from "../../flowRuntime";
 
 export function areSelectionIdsEqual(currentIds: Set<string>, nextIds: string[]) {
@@ -32,12 +32,17 @@ export function useSelectionState(runtime: FlowRuntime, services: FlowEditorServ
     }
   }
 
+  function refreshSelectedNodeClasses() {
+    runtime.nodes.value = services.withSelectionState(runtime.nodes.value as FlowNode[]);
+  }
+
   function clearNodeSelection() {
     if (runtime.selectedNodeIds.value.size === 0) {
       return;
     }
 
     runtime.selectedNodeIds.value = new Set();
+    refreshSelectedNodeClasses();
     nextTick(() => {
       services.scheduleSelectionBoundsRefresh();
       services.updatePresenceSelection();
@@ -58,6 +63,7 @@ export function useSelectionState(runtime: FlowRuntime, services: FlowEditorServ
     }
 
     runtime.selectedNodeIds.value = new Set(nodeIds);
+    refreshSelectedNodeClasses();
     nextTick(() => {
       services.scheduleSelectionBoundsRefresh();
       services.updatePresenceSelection();

@@ -18,19 +18,19 @@
   z-index: 14 !important;
 }
 
-.vue-flow .vue-flow__node:has(.sync-node.selected) {
+.vue-flow .vue-flow__node.selection-selected-node {
   z-index: 14 !important;
 }
 
-.vue-flow .vue-flow__node-section:has(.sync-node.selected) {
+.vue-flow .vue-flow__node-section.selection-selected-node {
   z-index: 1 !important;
 }
 
-.vue-flow .vue-flow__node-section.nested-flow-node:has(.sync-node.selected) {
+.vue-flow .vue-flow__node-section.nested-flow-node.selection-selected-node {
   z-index: 3 !important;
 }
 
-.vue-flow .vue-flow__node-item:has(.sync-node.selected) {
+.vue-flow .vue-flow__node-item.selection-selected-node {
   z-index: 14 !important;
 }
 
@@ -109,5 +109,9 @@
 
 .vue-flow__minimap svg {
   background: #ffffff;
+}
+
+.vue-flow__transformationpane {
+  will-change: transform;
 }
 
