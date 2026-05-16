@@ -3,18 +3,22 @@ import type { useFlowEditor } from "./useFlowEditor";
 
 type FlowEditorViewModels = ReturnType<typeof useFlowEditor>;
 
-export type CanvasContext = FlowEditorViewModels["canvas"];
+export type CanvasSurfaceContext = FlowEditorViewModels["canvasSurface"];
 export type CanvasOverlayContext = FlowEditorViewModels["canvasOverlay"];
 export type ContextMenuContext = FlowEditorViewModels["contextMenu"];
+export type FlowGraphContext = FlowEditorViewModels["flowGraph"];
+export type MiniMapContext = FlowEditorViewModels["miniMap"];
 export type NodeRendererContext = FlowEditorViewModels["nodeRenderer"];
 export type PresenceCursorContext = FlowEditorViewModels["presenceCursors"];
 export type SelectionOverlayContext = FlowEditorViewModels["selectionOverlay"];
 export type ShellContext = FlowEditorViewModels["shell"];
 export type TopBarContext = FlowEditorViewModels["topbar"];
 
-const canvasKey: InjectionKey<CanvasContext> = Symbol("CanvasContext");
+const canvasSurfaceKey: InjectionKey<CanvasSurfaceContext> = Symbol("CanvasSurfaceContext");
 const canvasOverlayKey: InjectionKey<CanvasOverlayContext> = Symbol("CanvasOverlayContext");
 const contextMenuKey: InjectionKey<ContextMenuContext> = Symbol("ContextMenuContext");
+const flowGraphKey: InjectionKey<FlowGraphContext> = Symbol("FlowGraphContext");
+const miniMapKey: InjectionKey<MiniMapContext> = Symbol("MiniMapContext");
 const nodeRendererKey: InjectionKey<NodeRendererContext> = Symbol("NodeRendererContext");
 const presenceCursorKey: InjectionKey<PresenceCursorContext> = Symbol("PresenceCursorContext");
 const selectionOverlayKey: InjectionKey<SelectionOverlayContext> = Symbol("SelectionOverlayContext");
@@ -32,9 +36,11 @@ function useRequiredContext<T>(key: InjectionKey<T>, name: string) {
 }
 
 export function provideFlowEditorContexts(editor: FlowEditorViewModels) {
-  provide(canvasKey, editor.canvas);
+  provide(canvasSurfaceKey, editor.canvasSurface);
   provide(canvasOverlayKey, editor.canvasOverlay);
   provide(contextMenuKey, editor.contextMenu);
+  provide(flowGraphKey, editor.flowGraph);
+  provide(miniMapKey, editor.miniMap);
   provide(nodeRendererKey, editor.nodeRenderer);
   provide(presenceCursorKey, editor.presenceCursors);
   provide(selectionOverlayKey, editor.selectionOverlay);
@@ -42,8 +48,8 @@ export function provideFlowEditorContexts(editor: FlowEditorViewModels) {
   provide(topBarKey, editor.topbar);
 }
 
-export function useCanvasContext() {
-  return useRequiredContext(canvasKey, "Canvas context");
+export function useCanvasSurfaceContext() {
+  return useRequiredContext(canvasSurfaceKey, "Canvas surface context");
 }
 
 export function useCanvasOverlayContext() {
@@ -52,6 +58,14 @@ export function useCanvasOverlayContext() {
 
 export function useContextMenuContext() {
   return useRequiredContext(contextMenuKey, "Context menu context");
+}
+
+export function useFlowGraphContext() {
+  return useRequiredContext(flowGraphKey, "Flow graph context");
+}
+
+export function useMiniMapContext() {
+  return useRequiredContext(miniMapKey, "Mini map context");
 }
 
 export function useNodeRendererContext() {

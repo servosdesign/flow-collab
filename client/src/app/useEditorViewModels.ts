@@ -1,8 +1,3 @@
-import {
-  ConnectionLineType,
-  ConnectionMode,
-  MarkerType
-} from "@vue-flow/core";
 import type { SyncPresenceUser } from "@vue-flow-sync/shared";
 import { computed, type Component } from "vue";
 import type { FlowNode } from "../domain/graph";
@@ -57,7 +52,6 @@ export function useEditorViewModels({
     isLassoSelecting,
     isLoggedIn,
     isMovingSelection,
-    isResizingNode,
     loginNameInput,
     loginPasswordInput,
     nodes,
@@ -172,43 +166,46 @@ export function useEditorViewModels({
   }
 
   return {
-    canvas: {
+    canvasSurface: {
       canvasPanel,
-      closeContextMenu: contextMenu.closeContextMenu,
-      ConnectionLineType,
-      ConnectionMode,
-      edges,
-      edgeTypes,
-      getMiniMapNodeColor,
-      getMiniMapNodeStroke,
       handleCanvasContextMenu: contextMenu.handleCanvasContextMenu,
       handleCanvasPointerDown: selection.handleCanvasPointerDown,
       handleCanvasPointerLeave: selection.handleCanvasPointerLeave,
       handleCanvasPointerMove: selection.handleCanvasPointerMove,
-      handleConnect: connections.handleConnect,
-      handleCreateDrop: nodeActions.handleCreateDrop,
-      handleEdgeClick: selection.handleEdgeClick,
-      handleEdgeUpdate: connections.handleEdgeUpdate,
-      handleNodeClick: selection.handleNodeClick,
-      handleNodeDrag: nodeActions.handleNodeDrag,
-      handleNodeDragStart: selection.handleNodeDragStart,
-      handleNodeDragStop,
-      handleNodesChange: selection.handleNodesChange,
-      handlePaneClick: nodeActions.handlePaneClick,
-      handleSelectionDrag: nodeActions.handleSelectionDrag,
-      handleSelectionDragStop: nodeActions.handleSelectionDragStop,
-      handleViewportMove: viewport.handleViewportMove,
-      handleViewportMoveEnd,
       isHoveringSelection,
+      isMovingSelection
+    },
+    flowGraph: {
+      edges,
+      edgeTypes,
+      events: {
+        closeContextMenu: contextMenu.closeContextMenu,
+        handleConnect: connections.handleConnect,
+        handleCreateDrop: nodeActions.handleCreateDrop,
+        handleEdgeClick: selection.handleEdgeClick,
+        handleEdgeUpdate: connections.handleEdgeUpdate,
+        handleNodeClick: selection.handleNodeClick,
+        handleNodeDrag: nodeActions.handleNodeDrag,
+        handleNodeDragStart: selection.handleNodeDragStart,
+        handleNodeDragStop,
+        handleNodesChange: selection.handleNodesChange,
+        handlePaneClick: nodeActions.handlePaneClick,
+        handleSelectionDrag: nodeActions.handleSelectionDrag,
+        handleSelectionDragStop: nodeActions.handleSelectionDragStop,
+        handleViewportMove: viewport.handleViewportMove,
+        handleViewportMoveEnd,
+        openEdgeContextMenu: contextMenu.openEdgeContextMenu,
+        openNodeContextMenu: contextMenu.openNodeContextMenu,
+        openSelectionContextMenu: contextMenu.openSelectionContextMenu
+      },
       isLoggedIn,
-      isMovingSelection,
-      isResizingNode,
       isValidSectionConnection: graphState.isValidSectionConnection,
-      MarkerType,
-      nodes: nodes as typeof nodes & { value: FlowNode[] },
-      openEdgeContextMenu: contextMenu.openEdgeContextMenu,
-      openNodeContextMenu: contextMenu.openNodeContextMenu,
-      openSelectionContextMenu: contextMenu.openSelectionContextMenu
+      nodes: nodes as typeof nodes & { value: FlowNode[] }
+    },
+    miniMap: {
+      getMiniMapNodeColor,
+      getMiniMapNodeStroke,
+      isLoggedIn
     },
     canvasOverlay: {
       errorMessage,
