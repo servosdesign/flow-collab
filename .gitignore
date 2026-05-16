@@ -8,3 +8,5 @@ Thumbs.db
 npm-debug.log*
 logs/
 coverage/
+uploads/
+server/uploads/
