@@ -710,19 +710,28 @@ export function useSelectionMove(
     clearSelectionMoveHiddenNodes();
   }
 
-  function buildCommittedSelectionMoveNodes(selectionMoveDrag: SelectionMoveDrag) {
+  function buildCommittedSelectionMoveNodes(
+    selectionMoveDrag: SelectionMoveDrag,
+    baseNodes = selectionMoveDrag.originalSyncNodes
+  ) {
     const delta = getSelectionMoveDelta(selectionMoveDrag);
 
-    return selectionMoveDrag.originalSyncNodes.map((node) => {
+    return baseNodes.map((node) => {
       if (!selectionMoveDrag.movingIds.has(node.id)) {
+        return node;
+      }
+
+      const originalNode = selectionMoveDrag.originalSyncNodesById.get(node.id);
+
+      if (!originalNode) {
         return node;
       }
 
       return {
         ...node,
         position: {
-          x: Math.round(node.position.x + delta.x),
-          y: Math.round(node.position.y + delta.y)
+          x: Math.round(originalNode.position.x + delta.x),
+          y: Math.round(originalNode.position.y + delta.y)
         }
       };
     });
@@ -1224,7 +1233,7 @@ export function useSelectionMove(
       return false;
     }
 
-    const nextNodes = buildCommittedSelectionMoveNodes(drag);
+    const nextNodes = buildCommittedSelectionMoveNodes(drag, document.data.nodes);
     const nextEdges = services.getCurrentSyncEdges(nextNodes);
     const previousNodesById = new Map(document.data.nodes.map((node) => [node.id, node]));
     const graph = createGraphCache(nextNodes, nextEdges);

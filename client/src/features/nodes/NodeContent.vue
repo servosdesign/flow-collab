@@ -147,5 +147,12 @@ watch(
       <CirclePlus :size="16" aria-hidden="true" />
     </button>
   </div>
-  <img v-if="data.imageUrl" class="node-image" :src="data.imageUrl" alt="" />
+  <img
+    v-if="data.imageUrl"
+    class="node-image"
+    :src="data.imageUrl"
+    alt=""
+    draggable="false"
+    @dragstart.prevent
+  />
 </template>

@@ -569,6 +569,10 @@ export function pruneEdgesAfterSectionExit(
   });
 }
 
+export function pruneInvalidSectionConnections(edgesToFilter: SyncEdge[], graph: GraphCache) {
+  return edgesToFilter.filter((edge) => isValidSectionConnection(edge, graph));
+}
+
 export function recalculateSectionMembershipInGraph(
   sectionId: string,
   nextNodes: SyncNode[],
@@ -604,7 +608,7 @@ export function recalculateSectionMembershipInGraph(
     }
   }
 
-  return nextEdges;
+  return pruneInvalidSectionConnections(nextEdges, graph);
 }
 
 export function applySectionMembershipForMovedNode(
@@ -662,6 +666,9 @@ export function applySectionMembershipForMovedNode(
     const prunedEdges = pruneEdgesAfterSectionExit(nextEdges, draggedNode.id, oldSectionId, graph);
     nextEdges.splice(0, nextEdges.length, ...prunedEdges);
   }
+
+  const validEdges = pruneInvalidSectionConnections(nextEdges, graph);
+  nextEdges.splice(0, nextEdges.length, ...validEdges);
 }
 
 export function isValidSectionConnection(
@@ -722,7 +729,7 @@ export function isValidSectionConnection(
     const targetIsOutsideSource = !isNodeInsideSection(target.id, source.id, graph);
 
     if (targetIsDirectChild) {
-      return true;
+      return connection.sourceHandle === "section-left";
     }
 
     return targetIsOutsideSource && !source.parentNode && connection.sourceHandle === "section-right";
@@ -733,7 +740,7 @@ export function isValidSectionConnection(
     const sourceIsOutsideTarget = !isNodeInsideSection(source.id, target.id, graph);
 
     if (sourceIsDirectChild) {
-      return true;
+      return connection.targetHandle === "section-right";
     }
 
     return sourceIsOutsideTarget && !target.parentNode && connection.targetHandle === "section-left";

@@ -308,6 +308,13 @@
   border-radius: 6px;
   border: 1px solid #dbe2ea;
   background: #eef3f8;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.lod-node-preview img {
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .node-widget {

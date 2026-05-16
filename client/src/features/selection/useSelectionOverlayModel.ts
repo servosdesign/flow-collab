@@ -23,6 +23,19 @@ export function useSelectionOverlayModel(
     const graph = createGraphCache(graphNodes);
     const viewport = runtime.currentViewport.value;
     const sectionDragPreview = runtime.sectionNodeDragPreview.value;
+    const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
+
+    if (
+      selectionMoveDrag?.selectedBounds &&
+      (sectionDragPreview || runtime.selectedNodeIds.value.size > 1)
+    ) {
+      return {
+        left: `${selectionMoveDrag.selectedBounds.left}px`,
+        top: `${selectionMoveDrag.selectedBounds.top}px`,
+        width: `${selectionMoveDrag.selectedBounds.width}px`,
+        height: `${selectionMoveDrag.selectedBounds.height}px`
+      };
+    }
 
     if (sectionDragPreview) {
       const section = graph.nodeById.get(sectionDragPreview.sectionId);
@@ -44,16 +57,6 @@ export function useSelectionOverlayModel(
 
     if (runtime.selectedNodeIds.value.size < 2) {
       return null;
-    }
-
-    const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
-    if (selectionMoveDrag?.selectedBounds) {
-      return {
-        left: `${selectionMoveDrag.selectedBounds.left}px`,
-        top: `${selectionMoveDrag.selectedBounds.top}px`,
-        width: `${selectionMoveDrag.selectedBounds.width}px`,
-        height: `${selectionMoveDrag.selectedBounds.height}px`
-      };
     }
 
     const selectedIds = runtime.selectedNodeIds.value;

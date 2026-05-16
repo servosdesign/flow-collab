@@ -147,6 +147,30 @@ assert.equal(
   ),
   true
 );
+assert.equal(
+  isValidSectionConnection(
+    {
+      source: section.id,
+      target: item.id,
+      sourceHandle: "section-right",
+      targetHandle: "main"
+    },
+    boundaryGraph
+  ),
+  false
+);
+assert.equal(
+  isValidSectionConnection(
+    {
+      source: section.id,
+      target: item.id,
+      sourceHandle: "section-left",
+      targetHandle: "main"
+    },
+    boundaryGraph
+  ),
+  true
+);
 
 const movedNodes = [{ ...section }, { ...item, position: { x: 60, y: 60 } }];
 const movedEdges: SyncEdge[] = [];
@@ -159,6 +183,30 @@ applySectionMembershipForMovedNode(
   item
 );
 assert.equal(movedNodes.find((node) => node.id === item.id)?.parentNode, section.id);
+
+const movedOutsideInsideNodes = [{ ...section }, { ...outsideItem }];
+const movedOutsideInsideEdges: SyncEdge[] = [
+  {
+    id: "edge-section-output",
+    source: section.id,
+    target: outsideItem.id,
+    sourceHandle: "section-right",
+    targetHandle: "main"
+  }
+];
+applySectionMembershipForMovedNode(
+  outsideItem.id,
+  { x: 80, y: 80 },
+  { width: 320, height: 260 },
+  movedOutsideInsideNodes,
+  movedOutsideInsideEdges,
+  outsideItem
+);
+assert.equal(
+  movedOutsideInsideNodes.find((node) => node.id === outsideItem.id)?.parentNode,
+  section.id
+);
+assert.deepEqual(movedOutsideInsideEdges, []);
 
 const shrunkSection = {
   ...section,

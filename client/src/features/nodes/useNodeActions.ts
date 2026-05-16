@@ -165,7 +165,7 @@ export function useNodeActions(runtime: FlowRuntime, services: FlowEditorService
         body: "",
         ports: defaultPorts()
       },
-      style: kind === "section" ? toNodeSizeStyle(520, 360) : toNodeSizeStyle(320, 320)
+      style: kind === "section" ? toNodeSizeStyle(520, 420) : toNodeSizeStyle(320, 320)
     };
 
     newNode = withContentSizedNode(newNode);
@@ -181,7 +181,16 @@ export function useNodeActions(runtime: FlowRuntime, services: FlowEditorService
     }
 
     runtime.pendingCreate.value = null;
-    submitGraphReplacement([...document.data.nodes, newNode], document.data.edges);
+    runtime.nodes.value = [
+      ...runtime.nodes.value,
+      withSelectionState([stripParentExtent(newNode) as FlowNode])[0]
+    ];
+    submitOperation([
+      {
+        p: ["nodes", document.data.nodes.length],
+        li: newNode
+      }
+    ]);
     refreshNodeInternalsSoon([...nextNodes.map((node) => node.id), newNode.id]);
   }
 

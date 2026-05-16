@@ -176,7 +176,13 @@ const MiniGauge = defineComponent({
     />
     <template v-if="readonlyPreview">
       <div class="lod-node-preview">
-        <img v-if="data.imageUrl" :src="data.imageUrl" alt="" />
+        <img
+          v-if="data.imageUrl"
+          :src="data.imageUrl"
+          alt=""
+          draggable="false"
+          @dragstart.prevent
+        />
         <span></span>
         <span></span>
         <span></span>

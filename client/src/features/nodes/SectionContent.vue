@@ -138,5 +138,12 @@ watch(
       />
     </label>
   </div>
-  <img v-if="data.imageUrl" class="node-image section-image" :src="data.imageUrl" alt="" />
+  <img
+    v-if="data.imageUrl"
+    class="node-image section-image"
+    :src="data.imageUrl"
+    alt=""
+    draggable="false"
+    @dragstart.prevent
+  />
 </template>

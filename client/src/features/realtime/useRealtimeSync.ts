@@ -17,7 +17,13 @@ import type { FlowEditorServices } from "../../app/flowEditorServices";
 import type { FlowRuntime } from "../../flowRuntime";
 
 export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServices) {
-  const granularNodeFields = new Set(["data", "style", "width", "height"]);
+  const granularNodeFields = new Set(["data", "style", "width", "height", "position"]);
+
+  function toRuntimeNode(documentNode: SyncNode) {
+    return services.withSelectionState([
+      stripParentExtent(withContentSizedNode(cloneJson(documentNode))) as FlowNode
+    ])[0];
+  }
 
   function finishRemoteApply() {
     nextTick(() => {
@@ -47,7 +53,7 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
     finishRemoteApply();
   }
 
-  function applyRemoteOperation(operation: JsonOp[], document: SyncFlowDocument) {
+  function applyRemoteGranularNodeOperation(operation: JsonOp[], document: SyncFlowDocument) {
     if (!Array.isArray(operation) || operation.length === 0) {
       return false;
     }
@@ -96,9 +102,7 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
       return false;
     }
 
-    const nextNode = services.withSelectionState([
-      stripParentExtent(withContentSizedNode(cloneJson(documentNode))) as FlowNode
-    ])[0];
+    const nextNode = toRuntimeNode(documentNode);
     const { data, ...nodePatch } = nextNode;
 
     if (!data) {
@@ -116,6 +120,167 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
 
     finishRemoteApply();
     return true;
+  }
+
+  function isNodeListOperation(component: JsonOp) {
+    return (
+      Array.isArray(component.p) &&
+      component.p[0] === "nodes" &&
+      typeof component.p[1] === "number" &&
+      component.p.length === 2 &&
+      ("li" in component || "ld" in component)
+    );
+  }
+
+  function findNodeIndexById(nodes: FlowNode[], nodeId: unknown) {
+    return typeof nodeId === "string" ? nodes.findIndex((node) => node.id === nodeId) : -1;
+  }
+
+  function applyRemoteNodeListOperation(operation: JsonOp[], document: SyncFlowDocument) {
+    if (!operation.every(isNodeListOperation)) {
+      return false;
+    }
+
+    const nextNodes = [...runtime.nodes.value] as FlowNode[];
+    const changedNodeIds = new Set<string>();
+    const removedNodeIds = new Set<string>();
+
+    for (const component of operation) {
+      const targetIndex = component.p[1] as number;
+      const hasInsert = "li" in component;
+      const hasDelete = "ld" in component;
+      const insertedNode = component.li as SyncNode | undefined;
+      const deletedNode = component.ld as SyncNode | undefined;
+
+      if (hasInsert && insertedNode?.id) {
+        const documentNode =
+          document.nodes.find((node) => node.id === insertedNode.id) ?? insertedNode;
+        const nextNode = toRuntimeNode(documentNode);
+        const existingIndex = findNodeIndexById(nextNodes, nextNode.id);
+
+        if (hasDelete) {
+          const replaceIndex = existingIndex >= 0 ? existingIndex : targetIndex;
+
+          if (replaceIndex < 0 || replaceIndex >= nextNodes.length) {
+            return false;
+          }
+
+          nextNodes[replaceIndex] = nextNode;
+        } else if (existingIndex >= 0) {
+          nextNodes[existingIndex] = nextNode;
+        } else {
+          nextNodes.splice(Math.max(0, Math.min(targetIndex, nextNodes.length)), 0, nextNode);
+        }
+
+        changedNodeIds.add(nextNode.id);
+        continue;
+      }
+
+      if (hasDelete) {
+        const deleteIndex = findNodeIndexById(nextNodes, deletedNode?.id);
+        const removeIndex = deleteIndex >= 0 ? deleteIndex : targetIndex;
+        const removedNode = nextNodes[removeIndex];
+
+        if (!removedNode) {
+          return false;
+        }
+
+        nextNodes.splice(removeIndex, 1);
+        removedNodeIds.add(removedNode.id);
+        continue;
+      }
+
+      return false;
+    }
+
+    runtime.isApplyingRemote.value = true;
+    if (removedNodeIds.size > 0) {
+      runtime.selectedNodeIds.value = new Set(
+        Array.from(runtime.selectedNodeIds.value).filter((nodeId) => !removedNodeIds.has(nodeId))
+      );
+    }
+    runtime.nodes.value = nextNodes;
+
+    if (changedNodeIds.size > 0) {
+      nextTick(() => runtime.updateNodeInternals?.(Array.from(changedNodeIds)));
+    }
+
+    finishRemoteApply();
+    return true;
+  }
+
+  function applyRemoteGraphReplacement(operation: JsonOp[], document: SyncFlowDocument) {
+    if (
+      !operation.every(
+        (component) =>
+          Array.isArray(component.p) &&
+          component.p.length === 1 &&
+          (component.p[0] === "nodes" ||
+            component.p[0] === "edges" ||
+            component.p[0] === "viewport")
+      )
+    ) {
+      return false;
+    }
+
+    const nodeComponent = operation.find((component) => component.p[0] === "nodes");
+    const edgeComponent = operation.find((component) => component.p[0] === "edges");
+    const movingIds = runtime.interaction.selectionMoveDrag?.movingIds ?? new Set<string>();
+    const changedNodeIds = new Set<string>();
+
+    runtime.isApplyingRemote.value = true;
+
+    if (nodeComponent && !sameJson(nodeComponent.od, nodeComponent.oi)) {
+      const existingNodesById = new Map(runtime.nodes.value.map((node) => [node.id, node]));
+      const nextNodes = document.nodes.map((documentNode) => {
+        const existingNode = existingNodesById.get(documentNode.id) as FlowNode | undefined;
+
+        if (existingNode && movingIds.has(documentNode.id)) {
+          return existingNode;
+        }
+
+        const nextNode = toRuntimeNode(documentNode);
+
+        if (existingNode && sameJson(normalizeNode(existingNode), normalizeNode(nextNode))) {
+          return existingNode;
+        }
+
+        changedNodeIds.add(documentNode.id);
+        return nextNode;
+      });
+      const documentNodeIds = new Set(document.nodes.map((node) => node.id));
+
+      runtime.selectedNodeIds.value = new Set(
+        Array.from(runtime.selectedNodeIds.value).filter((nodeId) => documentNodeIds.has(nodeId))
+      );
+      runtime.nodes.value = nextNodes;
+    }
+
+    if (edgeComponent && !sameJson(edgeComponent.od, edgeComponent.oi)) {
+      runtime.edges.value = withDefaultEdges(
+        document.edges,
+        createGraphCache(document.nodes, document.edges)
+      );
+    }
+
+    if (changedNodeIds.size > 0) {
+      nextTick(() => runtime.updateNodeInternals?.(Array.from(changedNodeIds)));
+    }
+
+    finishRemoteApply();
+    return true;
+  }
+
+  function applyRemoteOperation(operation: JsonOp[], document: SyncFlowDocument) {
+    if (!Array.isArray(operation) || operation.length === 0) {
+      return false;
+    }
+
+    return (
+      applyRemoteGranularNodeOperation(operation, document) ||
+      applyRemoteNodeListOperation(operation, document) ||
+      applyRemoteGraphReplacement(operation, document)
+    );
   }
 
   function submitOperation(operation: JsonOp[]) {
@@ -152,18 +317,20 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
     nextTick(() => {
       runtime.updateNodeInternals?.(nextNodes.map((node) => node.id));
     });
-    submitOperation([
-      {
-        p: ["nodes"],
-        od: oldNodes,
-        oi: nextNodes
-      },
-      {
-        p: ["edges"],
-        od: oldEdges,
-        oi: nextEdges
-      }
-    ]);
+    submitOperation(
+      [
+        !sameJson(oldNodes, nextNodes) && {
+          p: ["nodes"],
+          od: oldNodes,
+          oi: nextNodes
+        },
+        !sameJson(oldEdges, nextEdges) && {
+          p: ["edges"],
+          od: oldEdges,
+          oi: nextEdges
+        }
+      ].filter(Boolean) as JsonOp[]
+    );
   }
 
   function submitGraphSnapshot() {
