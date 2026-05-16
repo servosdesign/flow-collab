@@ -29,8 +29,8 @@
 }
 
 .vue-flow__node.selection-drag-hidden {
-  visibility: hidden;
-  pointer-events: none;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .vue-flow__node {
@@ -340,40 +340,33 @@
   padding: 6px;
 }
 
-.matrix-widget span,
-.hidden-node-workload span {
+.matrix-widget span {
   aspect-ratio: 1;
   border-radius: 4px;
   background: #c7d1dc;
 }
 
-.matrix-widget .tone-0,
-.hidden-node-workload .tone-0 {
+.matrix-widget .tone-0 {
   background: #0f766e;
 }
 
-.matrix-widget .tone-1,
-.hidden-node-workload .tone-1 {
+.matrix-widget .tone-1 {
   background: #2563eb;
 }
 
-.matrix-widget .tone-2,
-.hidden-node-workload .tone-2 {
+.matrix-widget .tone-2 {
   background: #dc2626;
 }
 
-.matrix-widget .tone-3,
-.hidden-node-workload .tone-3 {
+.matrix-widget .tone-3 {
   background: #9333ea;
 }
 
-.matrix-widget .tone-4,
-.hidden-node-workload .tone-4 {
+.matrix-widget .tone-4 {
   background: #d97706;
 }
 
-.matrix-widget .tone-5,
-.hidden-node-workload .tone-5 {
+.matrix-widget .tone-5 {
   background: #0891b2;
 }
 
@@ -406,14 +399,6 @@
   border-radius: 999px;
   background: #17212b;
   transform-origin: left center;
-}
-
-.hidden-node-workload {
-  display: none;
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
-  padding: 6px;
 }
 
 .section-image {

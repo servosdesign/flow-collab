@@ -9,7 +9,9 @@ import {
   defaultPorts,
   findContainingSectionForBounds,
   getAbsolutePosition,
+  getMeasuredItemNodeHeight,
   getMinimumNodeHeight,
+  getMinimumNodeWidth,
   getNodeSize,
   normalizeNode,
   recalculateSectionMembershipInGraph,
@@ -23,6 +25,7 @@ import {
 import type { FlowEditorServices } from "../../app/flowEditorServices";
 import type { FlowRuntime } from "../../flowRuntime";
 import { useNodeClipboard } from "./useNodeClipboard";
+import type { NodeBodyUpdate } from "./types";
 
 const portColors = [
   "#0f766e",
@@ -37,6 +40,38 @@ const portColors = [
 
 function randomPortColor() {
   return portColors[Math.floor(Math.random() * portColors.length)];
+}
+
+function withTextContentSizedNode(
+  previousNode: SyncNode,
+  nextNode: SyncNode,
+  measuredBodyHeight?: number
+): SyncNode {
+  if (nextNode.type !== "item") {
+    return nextNode;
+  }
+
+  const previousSize = getNodeSize(previousNode, 260, 260);
+  const nextMinimumHeight = Math.ceil(getMeasuredItemNodeHeight(nextNode, measuredBodyHeight));
+  const nextMinimumWidth = Math.ceil(getMinimumNodeWidth(nextNode));
+  const previousMinimumHeight = Math.ceil(
+    Math.max(getMinimumNodeHeight(previousNode), getMeasuredItemNodeHeight(previousNode))
+  );
+  const wasAutoHeight = previousSize.height <= previousMinimumHeight + 1;
+  const width = Math.max(previousSize.width, nextMinimumWidth);
+  const height = wasAutoHeight
+    ? nextMinimumHeight
+    : Math.max(previousSize.height, nextMinimumHeight);
+
+  return {
+    ...nextNode,
+    width: Math.round(width),
+    height: Math.round(height),
+    style: {
+      ...(nextNode.style ?? {}),
+      ...toNodeSizeStyle(width, height)
+    }
+  };
 }
 
 export function useNodeActions(runtime: FlowRuntime, services: FlowEditorServices) {
@@ -180,19 +215,20 @@ export function useNodeActions(runtime: FlowRuntime, services: FlowEditorService
   }
 
   function updateLocalNode(nodeId: string, updater: (node: FlowNode) => void) {
-    const nextNodes: FlowNode[] = [];
+    const nodeIndex = runtime.nodes.value.findIndex((node) => node.id === nodeId);
 
-    runtime.nodes.value.forEach((node) => {
-      const nextNode = { ...node, data: { ...node.data } } as FlowNode;
+    if (nodeIndex < 0) {
+      return;
+    }
 
-      if (nextNode.id === nodeId) {
-        updater(nextNode);
-      }
+    const nextNode = {
+      ...runtime.nodes.value[nodeIndex],
+      data: { ...runtime.nodes.value[nodeIndex].data }
+    } as FlowNode;
 
-      nextNodes.push(nextNode);
-    });
-
-    runtime.nodes.value = nextNodes;
+    updater(nextNode);
+    runtime.nodes.value[nodeIndex] = nextNode;
+    runtime.updateNode?.(nodeId, nextNode);
     nextTick(() => {
       scheduleSelectionBoundsRefresh();
       updatePresenceSelection();
@@ -439,7 +475,14 @@ export function useNodeActions(runtime: FlowRuntime, services: FlowEditorService
     scheduleSelectionBoundsRefresh();
   }
 
-  function submitNodeData(nodeId: string, key: "title" | "body" | "imageUrl", value: string) {
+  function submitNodeData(
+    nodeId: string,
+    key: "title" | "body" | "imageUrl",
+    input: string | NodeBodyUpdate
+  ) {
+    const value = typeof input === "string" ? input : input.value;
+    const measuredBodyHeight =
+      key === "body" && typeof input !== "string" ? input.measuredBodyHeight : undefined;
     const document = runtime.flowDocument.value;
     const index = document?.data.nodes.findIndex((node) => node.id === nodeId) ?? -1;
 
@@ -460,7 +503,11 @@ export function useNodeActions(runtime: FlowRuntime, services: FlowEditorService
         [key]: value
       }
     };
-    const nextSizedNode = withContentSizedNode(nextDocumentNode);
+    const nextSizedNode = withTextContentSizedNode(
+      document.data.nodes[index],
+      nextDocumentNode,
+      measuredBodyHeight
+    );
     const operation: JsonOp[] = [
       {
         p: ["nodes", index, "data", key],
@@ -477,14 +524,32 @@ export function useNodeActions(runtime: FlowRuntime, services: FlowEditorService
       });
     }
 
-    updateLocalNode(nodeId, (node) => {
-      const currentData = node.data ?? {
-        nodeType: node.type === "section" ? "section" : "item",
-        title: node.id,
+    if (document.data.nodes[index].width !== nextSizedNode.width) {
+      operation.push({
+        p: ["nodes", index, "width"],
+        od: document.data.nodes[index].width,
+        oi: nextSizedNode.width
+      });
+    }
+
+    if (document.data.nodes[index].height !== nextSizedNode.height) {
+      operation.push({
+        p: ["nodes", index, "height"],
+        od: document.data.nodes[index].height,
+        oi: nextSizedNode.height
+      });
+    }
+
+    const localNodeIndex = runtime.nodes.value.findIndex((node) => node.id === nodeId);
+
+    if (localNodeIndex >= 0) {
+      const localNode = runtime.nodes.value[localNodeIndex] as FlowNode;
+      const currentData = localNode.data ?? {
+        nodeType: localNode.type === "section" ? "section" : "item",
+        title: localNode.id,
         body: ""
       };
-
-      node.data =
+      const nextData =
         key === "title"
           ? {
               ...currentData,
@@ -499,11 +564,36 @@ export function useNodeActions(runtime: FlowRuntime, services: FlowEditorService
                 ...currentData,
                 imageUrl: value
               };
+      const nodePatch: Partial<FlowNode> = {};
 
       if (nextSizedNode.style) {
-        node.style = nextSizedNode.style;
+        nodePatch.style = nextSizedNode.style;
       }
-    });
+
+      if (typeof nextSizedNode.width !== "undefined") {
+        nodePatch.width = nextSizedNode.width;
+      }
+
+      if (typeof nextSizedNode.height !== "undefined") {
+        nodePatch.height = nextSizedNode.height;
+      }
+
+      runtime.nodes.value[localNodeIndex] = {
+        ...localNode,
+        ...nodePatch,
+        data: nextData
+      };
+      runtime.updateNodeData?.(nodeId, { [key]: value }, { replace: false });
+
+      if (Object.keys(nodePatch).length > 0) {
+        runtime.updateNode?.(nodeId, nodePatch);
+      }
+
+      nextTick(() => {
+        scheduleSelectionBoundsRefresh();
+        updatePresenceSelection();
+      });
+    }
 
     submitOperation(operation);
   }

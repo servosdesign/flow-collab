@@ -3,7 +3,7 @@ import type { SyncEdge, SyncNode } from "@vue-flow-sync/shared";
 import type { JsonOp } from "sharedb/lib/client";
 import {
   createReplaceOp,
-  getMinimumNodeHeight,
+  getMeasuredItemNodeHeight,
   getMinimumNodeWidth,
   recalculateSectionMembershipInGraph,
   toNodeSizeStyle,
@@ -15,7 +15,8 @@ import type { FlowRuntime } from "../../flowRuntime";
 export function useResize(runtime: FlowRuntime, services: FlowEditorServices) {
   function clampResizeParams(node: SyncNode, params: ResizeParams): ResizeParams {
     const minimumWidth = node.type === "section" ? 360 : getMinimumNodeWidth(node);
-    const minimumHeight = node.type === "section" ? 240 : getMinimumNodeHeight(node);
+    const minimumHeight =
+      node.type === "section" ? 240 : getMeasuredItemNodeHeight(node);
 
     return {
       ...params,

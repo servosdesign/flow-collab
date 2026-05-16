@@ -13,16 +13,41 @@ export function useSelectionOverlayModel(
   const selectedBoundsStyle = computed<Record<string, string> | null>(() => {
     if (
       !runtime.isLoggedIn.value ||
-      runtime.rightSelection.value ||
-      runtime.selectedNodeIds.value.size < 2
+      runtime.rightSelection.value
     ) {
+      return null;
+    }
+
+    runtime.selectionBoundsVersion.value;
+    const graphNodes = services.getCurrentSyncNodes();
+    const graph = createGraphCache(graphNodes);
+    const viewport = runtime.currentViewport.value;
+    const sectionDragPreview = runtime.sectionNodeDragPreview.value;
+
+    if (sectionDragPreview) {
+      const section = graph.nodeById.get(sectionDragPreview.sectionId);
+
+      if (!section) {
+        return null;
+      }
+
+      const bounds = getNodeBounds(section, graph);
+      const padding = 4;
+
+      return {
+        left: `${bounds.x * viewport.zoom + viewport.x - padding}px`,
+        top: `${bounds.y * viewport.zoom + viewport.y - padding}px`,
+        width: `${bounds.width * viewport.zoom + padding * 2}px`,
+        height: `${bounds.height * viewport.zoom + padding * 2}px`
+      };
+    }
+
+    if (runtime.selectedNodeIds.value.size < 2) {
       return null;
     }
 
     const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
     if (selectionMoveDrag?.selectedBounds) {
-      runtime.selectionBoundsVersion.value;
-
       return {
         left: `${selectionMoveDrag.selectedBounds.left}px`,
         top: `${selectionMoveDrag.selectedBounds.top}px`,
@@ -31,11 +56,7 @@ export function useSelectionOverlayModel(
       };
     }
 
-    runtime.selectionBoundsVersion.value;
-    const graphNodes = services.getCurrentSyncNodes();
-    const graph = createGraphCache(graphNodes);
     const selectedIds = runtime.selectedNodeIds.value;
-    const viewport = runtime.currentViewport.value;
     let selectedCount = 0;
     let minX = Number.POSITIVE_INFINITY;
     let minY = Number.POSITIVE_INFINITY;

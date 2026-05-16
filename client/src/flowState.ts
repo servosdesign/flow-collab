@@ -37,6 +37,7 @@ export function createFlowAppState(): FlowAppState {
     selectionBoundsVersion: ref(0),
     isHoveringSelection: ref(false),
     isMovingSelection: ref(false),
+    sectionNodeDragPreview: ref(null),
     isResizingNode: ref(false),
     isLassoSelecting: ref(false),
     userId: ref(savedUserId ?? crypto.randomUUID()),

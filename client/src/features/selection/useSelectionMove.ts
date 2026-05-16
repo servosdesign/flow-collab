@@ -7,7 +7,11 @@ import {
   applySectionMembershipForMovedNode,
   createGraphCache,
   getAbsolutePosition,
+  getNodeBounds,
   getNodeSize,
+  getRenderedNodeBounds,
+  getOverlapRatio,
+  isAncestorSection,
   normalizeNode,
   sameJson,
   stripParentExtent,
@@ -15,7 +19,11 @@ import {
   type FlowNode
 } from "../../domain/graph";
 import type { FlowRuntime } from "../../flowRuntime";
-import type { SelectionMoveDrag } from "../../flowTypes";
+import type {
+  SelectionMoveDrag,
+  SelectionMovePreviewCounts,
+  SelectionMovePreviewShapeKind
+} from "../../flowTypes";
 
 type LargeSelectionMovePreviewMode = "bundle" | "visible";
 
@@ -23,14 +31,22 @@ const largeSelectionMovePreviewMode: LargeSelectionMovePreviewMode = "bundle";
 const largeSelectionMovePreviewThreshold = 8;
 const hideSelectedNodesDuringBundleMove = true;
 const maxSelectionMovePreviewShapes = 36;
-const selectionMovePreviewShapeIndexes = Array.from(
-  { length: maxSelectionMovePreviewShapes },
-  (_, index) => index
-);
+const selectionDragHiddenClass = "selection-drag-hidden";
 
 type UseSelectionMoveOptions = {
   selectedBoundsStyle: ComputedRef<Record<string, string> | null>;
   getSelectedNodeIds: () => string[];
+};
+
+type SelectionMovePreviewShape = {
+  id: number;
+  kind: SelectionMovePreviewShapeKind;
+};
+
+type HiddenNodeClassSnapshot = {
+  id: string;
+  hadClass: boolean;
+  className: FlowNode["class"];
 };
 
 export function useSelectionMove(
@@ -40,13 +56,19 @@ export function useSelectionMove(
 ) {
   let selectionMovePointerCaptureTarget: HTMLElement | null = null;
   let selectionMovePreviewElement: HTMLElement | null = null;
-  let selectionMoveHiddenElements: Array<{
-    element: HTMLElement;
-    pointerEvents: string;
-    visibility: string;
-  }> = [];
+  let selectionMoveHiddenClassSnapshots: HiddenNodeClassSnapshot[] = [];
 
   const selectionMovePreview = computed(() => {
+    const sectionDragPreview = runtime.sectionNodeDragPreview.value;
+
+    if (sectionDragPreview) {
+      return {
+        active: true,
+        ...sectionDragPreview.previewCounts,
+        shapes: [{ id: 0, kind: "section" }] as SelectionMovePreviewShape[]
+      };
+    }
+
     const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
 
     if (
@@ -56,18 +78,22 @@ export function useSelectionMove(
     ) {
       return {
         active: false,
-        count: 0,
-        shapes: [] as number[]
+        itemCount: 0,
+        sectionCount: 0,
+        containedCount: 0,
+        containedSectionCount: 0,
+        shapes: [] as SelectionMovePreviewShape[]
       };
     }
 
+    const shapes = selectionMoveDrag.previewShapeKinds
+      .slice(0, Math.min(selectionMoveDrag.previewShapeKinds.length, maxSelectionMovePreviewShapes))
+      .map((kind, index) => ({ id: index, kind }));
+
     return {
       active: true,
-      count: selectionMoveDrag.movingIndexes.length,
-      shapes: selectionMovePreviewShapeIndexes.slice(
-        0,
-        Math.min(selectionMoveDrag.movingIndexes.length, maxSelectionMovePreviewShapes)
-      )
+      ...selectionMoveDrag.previewCounts,
+      shapes
     };
   });
 
@@ -95,6 +121,84 @@ export function useSelectionMove(
     );
   }
 
+  function addDescendantIds(nodeId: string, graph: ReturnType<typeof createGraphCache>, ids: Set<string>) {
+    const children = graph.childrenByParentId.get(nodeId) ?? [];
+
+    children.forEach((child) => {
+      if (ids.has(child.id)) {
+        return;
+      }
+
+      ids.add(child.id);
+      addDescendantIds(child.id, graph, ids);
+    });
+  }
+
+  function countSectionIds(ids: Set<string>, graph: ReturnType<typeof createGraphCache>) {
+    let count = 0;
+
+    ids.forEach((nodeId) => {
+      if (graph.nodeById.get(nodeId)?.type === "section") {
+        count += 1;
+      }
+    });
+
+    return count;
+  }
+
+  function buildSelectionMoveHiddenIds(allNodes: SyncNode[], movingIds: Set<string>) {
+    const graph = createGraphCache(allNodes);
+    const hiddenIds = new Set(movingIds);
+
+    movingIds.forEach((nodeId) => {
+      const node = graph.nodeById.get(nodeId);
+
+      if (node?.type === "section") {
+        addDescendantIds(nodeId, graph, hiddenIds);
+      }
+    });
+
+    return hiddenIds;
+  }
+
+  function buildSelectionMovePreviewMetadata(
+    allNodes: SyncNode[],
+    movingIds: Set<string>,
+    hiddenIds: Set<string>
+  ) {
+    const counts: SelectionMovePreviewCounts = {
+      itemCount: 0,
+      sectionCount: 0,
+      containedCount: Math.max(0, hiddenIds.size - movingIds.size),
+      containedSectionCount: 0
+    };
+    const shapeKinds: SelectionMovePreviewShapeKind[] = [];
+
+    allNodes.forEach((node) => {
+      if (hiddenIds.has(node.id) && !movingIds.has(node.id) && node.type === "section") {
+        counts.containedSectionCount += 1;
+      }
+
+      if (!movingIds.has(node.id)) {
+        return;
+      }
+
+      if (node.type === "section") {
+        counts.sectionCount += 1;
+        shapeKinds.push("section");
+        return;
+      }
+
+      counts.itemCount += 1;
+      shapeKinds.push("item");
+    });
+
+    return {
+      counts,
+      shapeKinds
+    };
+  }
+
   function getSelectedBoundsSnapshot() {
     const style = options.selectedBoundsStyle.value;
 
@@ -119,49 +223,169 @@ export function useSelectionMove(
     };
   }
 
-  function getFlowNodeElement(nodeId: string) {
-    const escapedNodeId =
-      typeof CSS !== "undefined" && typeof CSS.escape === "function"
-        ? CSS.escape(nodeId)
-        : nodeId.replace(/["\\]/g, "\\$&");
+  function hasClassName(className: FlowNode["class"], name: string) {
+    return typeof className === "string" && className.split(/\s+/).includes(name);
+  }
 
-    return runtime.canvasPanel.value?.querySelector<HTMLElement>(
-      `.vue-flow__node[data-id="${escapedNodeId}"]`
-    ) ?? null;
+  function withClassName(className: FlowNode["class"], name: string) {
+    const classNames = typeof className === "string"
+      ? className.split(/\s+/).filter(Boolean)
+      : [];
+
+    if (!classNames.includes(name)) {
+      classNames.push(name);
+    }
+
+    return classNames.join(" ");
+  }
+
+  function restoreNodeClass(node: FlowNode, snapshot: HiddenNodeClassSnapshot) {
+    if (snapshot.hadClass) {
+      return {
+        ...node,
+        class: snapshot.className
+      };
+    }
+
+    const { class: _className, ...nextNode } = node;
+
+    return nextNode as FlowNode;
   }
 
   function clearSelectionMoveHiddenNodes() {
-    selectionMoveHiddenElements.forEach(({ element, pointerEvents, visibility }) => {
-      element.classList.remove("selection-drag-hidden");
-      element.style.visibility = visibility;
-      element.style.pointerEvents = pointerEvents;
-    });
-    selectionMoveHiddenElements = [];
-  }
-
-  function hideBundleSelectionNodes(selectionMoveDrag: SelectionMoveDrag) {
-    clearSelectionMoveHiddenNodes();
-
-    if (!hideSelectedNodesDuringBundleMove || selectionMoveDrag.mode !== "bundle") {
+    if (selectionMoveHiddenClassSnapshots.length === 0) {
       return;
     }
 
-    selectionMoveDrag.movingIds.forEach((nodeId) => {
-      const element = getFlowNodeElement(nodeId);
+    const snapshotsById = new Map(
+      selectionMoveHiddenClassSnapshots.map((snapshot) => [snapshot.id, snapshot])
+    );
+    let changed = false;
+    const nextNodes = (runtime.nodes.value as FlowNode[]).map((node) => {
+      const snapshot = snapshotsById.get(node.id);
 
-      if (!element) {
+      if (!snapshot || !hasClassName(node.class, selectionDragHiddenClass)) {
+        return node;
+      }
+
+      changed = true;
+      return restoreNodeClass(node, snapshot);
+    });
+
+    selectionMoveHiddenClassSnapshots = [];
+
+    if (changed) {
+      runtime.nodes.value = nextNodes;
+    }
+  }
+
+  function hideSelectionMoveNodes(hiddenIds: Set<string>) {
+    clearSelectionMoveHiddenNodes();
+
+    if (hiddenIds.size === 0) {
+      return;
+    }
+
+    const nextSnapshots: HiddenNodeClassSnapshot[] = [];
+    let changed = false;
+    const nextNodes = (runtime.nodes.value as FlowNode[]).map((node) => {
+      if (!hiddenIds.has(node.id)) {
+        return node;
+      }
+
+      nextSnapshots.push({
+        id: node.id,
+        hadClass: Object.prototype.hasOwnProperty.call(node, "class"),
+        className: node.class
+      });
+
+      const nextClassName = withClassName(node.class, selectionDragHiddenClass);
+
+      if (node.class === nextClassName) {
+        return node;
+      }
+
+      changed = true;
+
+      return {
+        ...node,
+        class: nextClassName
+      };
+    });
+
+    selectionMoveHiddenClassSnapshots = nextSnapshots;
+
+    if (changed) {
+      runtime.nodes.value = nextNodes;
+    }
+  }
+
+  function hideBundleSelectionNodes(selectionMoveDrag: SelectionMoveDrag) {
+    if (!hideSelectedNodesDuringBundleMove || selectionMoveDrag.mode !== "bundle") {
+      clearSelectionMoveHiddenNodes();
+      return;
+    }
+
+    hideSelectionMoveNodes(selectionMoveDrag.hiddenIds);
+  }
+
+  function handleSectionNodeDragStart(sectionId: string) {
+    const allNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode);
+    const graph = createGraphCache(allNodes);
+    const section = graph.nodeById.get(sectionId);
+
+    if (section?.type !== "section") {
+      return;
+    }
+
+    const descendantIds = new Set<string>();
+    addDescendantIds(sectionId, graph, descendantIds);
+    const sectionBounds = getNodeBounds(section, graph);
+
+    allNodes.forEach((node) => {
+      if (
+        node.id === sectionId ||
+        descendantIds.has(node.id) ||
+        isAncestorSection(node.id, sectionId, graph)
+      ) {
         return;
       }
 
-      element.classList.add("selection-drag-hidden");
-      selectionMoveHiddenElements.push({
-        element,
-        pointerEvents: element.style.pointerEvents,
-        visibility: element.style.visibility
-      });
-      element.style.visibility = "hidden";
-      element.style.pointerEvents = "none";
+      if (getOverlapRatio(getRenderedNodeBounds(node, graph), sectionBounds) >= 0.5) {
+        descendantIds.add(node.id);
+
+        if (node.type === "section") {
+          addDescendantIds(node.id, graph, descendantIds);
+        }
+      }
     });
+
+    if (descendantIds.size + 1 <= largeSelectionMovePreviewThreshold) {
+      return;
+    }
+
+    runtime.sectionNodeDragPreview.value = {
+      sectionId,
+      previewCounts: {
+        itemCount: 0,
+        sectionCount: 1,
+        containedCount: descendantIds.size,
+        containedSectionCount: countSectionIds(descendantIds, graph)
+      },
+      hiddenIds: descendantIds
+    };
+    hideSelectionMoveNodes(descendantIds);
+  }
+
+  function clearSectionNodeDragPreview() {
+    const preview = runtime.sectionNodeDragPreview.value;
+
+    if (!preview) {
+      return;
+    }
+
+    runtime.sectionNodeDragPreview.value = null;
+    clearSelectionMoveHiddenNodes();
   }
 
   function buildSelectionMoveDragMetadata(originalSyncNodes: SyncNode[], movingIds: Set<string>) {
@@ -419,12 +643,15 @@ export function useSelectionMove(
 
     const normalizedOriginalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode);
     const movingIds = getMovableSelectedIds(normalizedOriginalNodes);
+    const hiddenIds = buildSelectionMoveHiddenIds(normalizedOriginalNodes, movingIds);
+    const { counts: previewCounts, shapeKinds: previewShapeKinds } =
+      buildSelectionMovePreviewMetadata(normalizedOriginalNodes, movingIds, hiddenIds);
     const movingIndexes = normalizedOriginalNodes
       .map((node, index) => (movingIds.has(node.id) ? index : -1))
       .filter((index) => index >= 0);
     const mode =
       largeSelectionMovePreviewMode === "bundle" &&
-      movingIndexes.length > largeSelectionMovePreviewThreshold
+      hiddenIds.size > largeSelectionMovePreviewThreshold
         ? "bundle"
         : "visible";
     const originalSyncNodesById = new Map(normalizedOriginalNodes.map((node) => [node.id, node]));
@@ -467,6 +694,9 @@ export function useSelectionMove(
       dragItems,
       movingIds,
       movingIndexes,
+      hiddenIds,
+      previewCounts,
+      previewShapeKinds,
       selectedBounds: getSelectedBoundsSnapshot()
     };
     hideBundleSelectionNodes(runtime.interaction.selectionMoveDrag);
@@ -606,11 +836,14 @@ export function useSelectionMove(
     clearSelectionMovePreview();
     runtime.interaction.selectionMoveDrag = null;
     selectionMovePointerCaptureTarget = null;
+    clearSectionNodeDragPreview();
   }
 
   return {
     cleanupSelectionMove,
+    clearSectionNodeDragPreview,
     handleSelectedBoundsPointerDown,
+    handleSectionNodeDragStart,
     selectionMovePreview
   };
 }

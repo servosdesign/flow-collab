@@ -163,6 +163,14 @@ export function useEditorViewModels({
     realtime.scheduleGraphSnapshot(500);
   }
 
+  function handleNodeDragStop(payload: Parameters<typeof nodeActions.handleNodeDragStop>[0]) {
+    try {
+      nodeActions.handleNodeDragStop(payload);
+    } finally {
+      selection.handleNodeDragStop();
+    }
+  }
+
   return {
     canvas: {
       canvasPanel,
@@ -184,7 +192,7 @@ export function useEditorViewModels({
       handleNodeClick: selection.handleNodeClick,
       handleNodeDrag: nodeActions.handleNodeDrag,
       handleNodeDragStart: selection.handleNodeDragStart,
-      handleNodeDragStop: nodeActions.handleNodeDragStop,
+      handleNodeDragStop,
       handleNodesChange: selection.handleNodesChange,
       handlePaneClick: nodeActions.handlePaneClick,
       handleSelectionDrag: nodeActions.handleSelectionDrag,

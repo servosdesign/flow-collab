@@ -35,7 +35,7 @@ type LassoPointerRect = {
 };
 
 const nodeInteractiveSelector =
-  "input, textarea, button, label, select, [contenteditable], .nodrag, .nopan, [data-node-interactive]";
+  "input, textarea, button, label, select, [contenteditable], [data-node-interactive]";
 
 export function useSelection(runtime: FlowRuntime, services: FlowEditorServices) {
   let lassoBoundsCache: LassoNodeBounds[] = [];
@@ -214,11 +214,17 @@ export function useSelection(runtime: FlowRuntime, services: FlowEditorServices)
 
     if (selectedIds.length > 1 && selectedIds.includes(payload.node.id)) {
       runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350;
+      selectionMove.handleSectionNodeDragStart(payload.node.id);
       return;
     }
 
     setSelectedNodes([payload.node.id]);
     runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350;
+    selectionMove.handleSectionNodeDragStart(payload.node.id);
+  }
+
+  function handleNodeDragStop() {
+    selectionMove.clearSectionNodeDragPreview();
   }
 
   function deleteSelectedElements() {
@@ -661,6 +667,7 @@ export function useSelection(runtime: FlowRuntime, services: FlowEditorServices)
     handleEdgeClick,
     handleNodeClick,
     handleNodeDragStart,
+    handleNodeDragStop,
     handleNodesChange,
     handleSelectedBoundsPointerDown: selectionMove.handleSelectedBoundsPointerDown,
     isCanvasSelectionTarget,

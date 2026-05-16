@@ -56,6 +56,48 @@ function handleSelectedBoundsWheel(event: WheelEvent) {
 
   target.dispatchEvent(createForwardedWheelEvent(event));
 }
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return count === 1 ? singular : plural;
+}
+
+function previewPrimaryLabel() {
+  const preview = selectionMovePreview.value;
+
+  if (preview.sectionCount === 0) {
+    return String(preview.itemCount);
+  }
+
+  return [
+    preview.itemCount > 0 &&
+      `${preview.itemCount} ${pluralize(preview.itemCount, "node")}`,
+    preview.sectionCount > 0 &&
+      `${preview.sectionCount} ${pluralize(preview.sectionCount, "section")}`
+  ]
+    .filter(Boolean)
+    .join(" + ");
+}
+
+function previewSecondaryLabel() {
+  const preview = selectionMovePreview.value;
+
+  if (preview.sectionCount === 0) {
+    return pluralize(preview.itemCount, "node");
+  }
+
+  if (preview.containedCount === 0) {
+    return "moving";
+  }
+
+  if (preview.containedSectionCount > 0) {
+    return `${preview.containedCount} inside, incl. ${preview.containedSectionCount} ${pluralize(
+      preview.containedSectionCount,
+      "section"
+    )}`;
+  }
+
+  return `${preview.containedCount} inside`;
+}
 </script>
 
 <template>
@@ -84,12 +126,13 @@ function handleSelectedBoundsWheel(event: WheelEvent) {
     >
       <span
         v-for="shape in selectionMovePreview.shapes"
-        :key="shape"
+        :key="shape.id"
         class="selection-move-preview-shape"
+        :class="`selection-move-preview-shape-${shape.kind}`"
       ></span>
       <strong class="selection-move-preview-count">
-        <span>{{ selectionMovePreview.count }}</span>
-        <small>nodes</small>
+        <span>{{ previewPrimaryLabel() }}</span>
+        <small>{{ previewSecondaryLabel() }}</small>
       </strong>
     </div>
     <span

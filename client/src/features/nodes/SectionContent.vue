@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Image, MoreVertical } from "@lucide/vue";
+import { nextTick, onMounted, ref, watch } from "vue";
 import type { SyncNodeData } from "@vue-flow-sync/shared";
+import type { NodeBodyUpdate } from "./types";
 
 const props = defineProps<{
   data: SyncNodeData;
@@ -8,11 +10,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "update-title": [value: string];
-  "update-body": [value: string];
+  "update-body": [update: NodeBodyUpdate];
   "upload-image": [file: File];
   "open-menu": [event: MouseEvent];
   "add-port": [];
 }>();
+
+const bodyInput = ref<HTMLTextAreaElement | null>(null);
 
 function titleValue() {
   return props.data.title ?? props.data.text ?? "Section";
@@ -22,13 +26,19 @@ function bodyValue() {
   return props.data.body ?? props.data.text ?? "";
 }
 
-function bodyRows() {
-  const body = bodyValue();
-  const wrappedRows = body
-    .split("\n")
-    .reduce((rows, line) => rows + Math.max(1, Math.ceil(line.length / 42)), 0);
+function measureBodyHeight(textarea = bodyInput.value) {
+  if (!textarea) {
+    return undefined;
+  }
 
-  return Math.max(1, wrappedRows);
+  textarea.style.height = "auto";
+  const style = window.getComputedStyle(textarea);
+  const borderHeight =
+    Number.parseFloat(style.borderTopWidth) + Number.parseFloat(style.borderBottomWidth);
+  const height = Math.max(30, Math.ceil(textarea.scrollHeight + borderHeight));
+  textarea.style.height = `${height}px`;
+
+  return height;
 }
 
 function handleTitleInput(event: Event) {
@@ -36,7 +46,12 @@ function handleTitleInput(event: Event) {
 }
 
 function handleBodyInput(event: Event) {
-  emit("update-body", (event.target as HTMLTextAreaElement).value);
+  const textarea = event.target as HTMLTextAreaElement;
+
+  emit("update-body", {
+    value: textarea.value,
+    measuredBodyHeight: measureBodyHeight(textarea)
+  });
 }
 
 function handleUpload(event: Event) {
@@ -49,6 +64,17 @@ function handleUpload(event: Event) {
 
   input.value = "";
 }
+
+onMounted(() => {
+  measureBodyHeight();
+});
+
+watch(
+  () => bodyValue(),
+  () => {
+    nextTick(() => measureBodyHeight());
+  }
+);
 </script>
 
 <template>
@@ -79,10 +105,11 @@ function handleUpload(event: Event) {
   <div class="node-divider"></div>
   <div class="node-body section-body">
     <textarea
+      ref="bodyInput"
       class="node-input node-textarea section-input nodrag nopan"
       data-node-interactive
       :value="bodyValue()"
-      :rows="bodyRows()"
+      rows="1"
       @input.stop="handleBodyInput"
       @click.stop
       @mousedown.stop

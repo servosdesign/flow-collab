@@ -1,4 +1,5 @@
 import { nextTick, onBeforeUnmount, onMounted } from "vue";
+import type { JsonOp } from "sharedb/lib/client";
 import { connectFlowDocument } from "../realtime";
 import type { FlowAppState } from "../flowTypes";
 import type { useViewport } from "../features/canvas/useViewport";
@@ -57,11 +58,22 @@ export function useEditorLifecycle({
       status.value = "Live";
       nextTick(nodeActions.sanitizeSectionMembership);
 
-      realtimeConnection.document.on("op", (_operation, source) => {
+      realtimeConnection.document.on("op", (operation, source) => {
+        if (source === state.localSource) {
+          return;
+        }
+
         if (
-          source === state.localSource ||
-          realtime.documentMatchesLocal(realtimeConnection.document.data)
+          realtime.applyRemoteOperation(
+            operation as JsonOp[],
+            realtimeConnection.document.data
+          )
         ) {
+          status.value = "Live";
+          return;
+        }
+
+        if (realtime.documentMatchesLocal(realtimeConnection.document.data)) {
           return;
         }
 

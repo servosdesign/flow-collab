@@ -4,7 +4,9 @@ import { NodeResizer, type OnResize, type OnResizeEnd, type OnResizeStart } from
 import "@vue-flow/node-resizer/dist/style.css";
 import { computed, defineComponent, h, type PropType } from "vue";
 import type { SyncNodeData, SyncPort, SyncPresenceUser } from "@vue-flow-sync/shared";
+import { getMeasuredItemNodeHeight } from "../../domain/graph";
 import NodeContent from "./NodeContent.vue";
+import type { NodeBodyUpdate } from "./types";
 import { useStableResizerStyle } from "./useStableResizerStyle";
 
 const props = defineProps<{
@@ -19,7 +21,7 @@ const props = defineProps<{
 
 defineEmits<{
   "update-title": [id: string, value: string];
-  "update-body": [id: string, value: string];
+  "update-body": [id: string, update: NodeBodyUpdate];
   "upload-image": [id: string, file: File];
   "resize-start": [id: string, params: OnResizeStart["params"]];
   resize: [id: string, params: OnResize["params"]];
@@ -46,20 +48,14 @@ const hiddenTiles = computed(() =>
   }))
 );
 const minimumNodeWidth = computed(() => 320 + Math.max(0, ports.value.length - 8) * 14);
-const minimumNodeHeight = computed(() => {
-  const body = props.data.body ?? props.data.text ?? "";
-  const rows = body
-    ? body
-        .split("\n")
-        .reduce((total, line) => total + Math.max(1, Math.ceil(line.length / 34)), 0)
-    : 4;
-  const bodyHeight = Math.max(98, rows * 17 + 28);
-  const imageHeight = props.data.imageUrl ? 144 : 0;
-  const widgetHeight = 72;
-  const portHeight = Math.max(0, ports.value.length - 6) * 22;
-
-  return 150 + bodyHeight + imageHeight + widgetHeight + portHeight;
-});
+const minimumNodeHeight = computed(() =>
+  getMeasuredItemNodeHeight({
+    id: props.id,
+    type: "item",
+    position: { x: 0, y: 0 },
+    data: props.data
+  })
+);
 const resizerStyle = useStableResizerStyle(() => props.viewportZoom);
 
 function portTop(index: number) {
@@ -133,29 +129,6 @@ const MiniGauge = defineComponent({
   }
 });
 
-const HiddenWorkload = defineComponent({
-  name: "HiddenWorkload",
-  props: {
-    tiles: {
-      type: Array as PropType<Array<{ id: number; tone: number; value: number }>>,
-      required: true
-    }
-  },
-  setup(componentProps) {
-    return () =>
-      h(
-        "div",
-        { class: "hidden-node-workload", "aria-hidden": "true" },
-        componentProps.tiles.map((tile) =>
-          h("span", {
-            key: tile.id,
-            class: `tone-${tile.tone}`,
-            style: { opacity: tile.value / 100 }
-          })
-        )
-      );
-  }
-});
 </script>
 
 <template>
@@ -221,7 +194,6 @@ const HiddenWorkload = defineComponent({
       <DenseBars v-if="visibleWidget === 0" :bars="widgetBars" />
       <StatusMatrix v-else-if="visibleWidget === 1" :tiles="hiddenTiles" />
       <MiniGauge v-else-if="visibleWidget === 2" :seed="workloadSeed" />
-      <HiddenWorkload :tiles="hiddenTiles" />
     </template>
     <template v-for="(port, index) in ports" :key="`source-${port.id}`">
       <Handle

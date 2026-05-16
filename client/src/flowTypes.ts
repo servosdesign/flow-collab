@@ -27,6 +27,20 @@ export type DragSelection = {
 };
 
 export type SelectionMoveDragMode = "visible" | "bundle";
+export type SelectionMovePreviewShapeKind = "item" | "section";
+
+export type SelectionMovePreviewCounts = {
+  itemCount: number;
+  sectionCount: number;
+  containedCount: number;
+  containedSectionCount: number;
+};
+
+export type SectionNodeDragPreview = {
+  sectionId: string;
+  previewCounts: SelectionMovePreviewCounts;
+  hiddenIds: Set<string>;
+};
 
 export type SelectionMoveDrag = {
   mode: SelectionMoveDragMode;
@@ -40,6 +54,9 @@ export type SelectionMoveDrag = {
   dragItems: NodeDragItem[];
   movingIds: Set<string>;
   movingIndexes: number[];
+  hiddenIds: Set<string>;
+  previewCounts: SelectionMovePreviewCounts;
+  previewShapeKinds: SelectionMovePreviewShapeKind[];
   frame?: number;
   selectedBounds: {
     left: number;
@@ -88,6 +105,7 @@ export type FlowAppState = {
   selectionBoundsVersion: Ref<number>;
   isHoveringSelection: Ref<boolean>;
   isMovingSelection: Ref<boolean>;
+  sectionNodeDragPreview: Ref<SectionNodeDragPreview | null>;
   isResizingNode: Ref<boolean>;
   isLassoSelecting: Ref<boolean>;
   userId: Ref<string>;

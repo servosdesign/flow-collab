@@ -17,6 +17,15 @@ import type { FlowEditorServices } from "../../app/flowEditorServices";
 import type { FlowRuntime } from "../../flowRuntime";
 
 export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServices) {
+  const granularNodeFields = new Set(["data", "style", "width", "height"]);
+
+  function finishRemoteApply() {
+    nextTick(() => {
+      runtime.isApplyingRemote.value = false;
+      runtime.isFlowLoading.value = false;
+    });
+  }
+
   function applyFlowDocument(document: SyncFlowDocument, fit = false) {
     runtime.isApplyingRemote.value = true;
 
@@ -35,10 +44,78 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
       window.requestAnimationFrame(() => runtime.fitView({ padding: 0.18 }));
     }
 
-    nextTick(() => {
-      runtime.isApplyingRemote.value = false;
-      runtime.isFlowLoading.value = false;
-    });
+    finishRemoteApply();
+  }
+
+  function applyRemoteOperation(operation: JsonOp[], document: SyncFlowDocument) {
+    if (!Array.isArray(operation) || operation.length === 0) {
+      return false;
+    }
+
+    let nodeIndex: number | undefined;
+    let shouldRefreshNodeInternals = false;
+
+    for (const component of operation) {
+      const path = component.p;
+
+      if (
+        !Array.isArray(path) ||
+        path[0] !== "nodes" ||
+        typeof path[1] !== "number" ||
+        path.length < 3 ||
+        typeof path[2] !== "string" ||
+        !granularNodeFields.has(path[2])
+      ) {
+        return false;
+      }
+
+      if (typeof nodeIndex === "undefined") {
+        nodeIndex = path[1];
+      } else if (nodeIndex !== path[1]) {
+        return false;
+      }
+
+      if (path[2] === "data" && path[3] === "ports") {
+        shouldRefreshNodeInternals = true;
+      }
+    }
+
+    if (typeof nodeIndex === "undefined") {
+      return false;
+    }
+
+    const documentNode = document.nodes[nodeIndex];
+
+    if (!documentNode) {
+      return false;
+    }
+
+    const localNodeIndex = runtime.nodes.value.findIndex((node) => node.id === documentNode.id);
+
+    if (localNodeIndex < 0) {
+      return false;
+    }
+
+    const nextNode = services.withSelectionState([
+      stripParentExtent(withContentSizedNode(cloneJson(documentNode))) as FlowNode
+    ])[0];
+    const { data, ...nodePatch } = nextNode;
+
+    if (!data) {
+      return false;
+    }
+
+    runtime.isApplyingRemote.value = true;
+    runtime.nodes.value[localNodeIndex] = nextNode;
+    runtime.updateNodeData?.(documentNode.id, data, { replace: true });
+    runtime.updateNode?.(documentNode.id, nodePatch);
+
+    if (shouldRefreshNodeInternals) {
+      nextTick(() => runtime.updateNodeInternals?.([documentNode.id]));
+    }
+
+    finishRemoteApply();
+    return true;
   }
 
   function submitOperation(operation: JsonOp[]) {
@@ -149,6 +226,7 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
 
   return {
     applyFlowDocument,
+    applyRemoteOperation,
     cleanupRealtimeSync,
     documentMatchesLocal,
     scheduleGraphSnapshot,

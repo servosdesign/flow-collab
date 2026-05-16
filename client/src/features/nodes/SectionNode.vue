@@ -4,6 +4,7 @@ import { NodeResizer, type OnResize, type OnResizeEnd, type OnResizeStart } from
 import "@vue-flow/node-resizer/dist/style.css";
 import type { SyncNodeData, SyncPresenceUser } from "@vue-flow-sync/shared";
 import SectionContent from "./SectionContent.vue";
+import type { NodeBodyUpdate } from "./types";
 import { useStableResizerStyle } from "./useStableResizerStyle";
 
 const props = defineProps<{
@@ -18,7 +19,7 @@ const props = defineProps<{
 
 defineEmits<{
   "update-title": [id: string, value: string];
-  "update-body": [id: string, value: string];
+  "update-body": [id: string, update: NodeBodyUpdate];
   "upload-image": [id: string, file: File];
   "resize-start": [id: string, params: OnResizeStart["params"]];
   resize: [id: string, params: OnResize["params"]];

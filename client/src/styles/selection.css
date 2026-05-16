@@ -74,11 +74,24 @@
     0 4px 10px rgb(26 115 232 / 12%);
 }
 
+.selection-move-preview-shape-section {
+  min-height: 16px;
+  border-style: dashed;
+  border-color: rgb(15 118 110 / 54%);
+  background:
+    linear-gradient(135deg, rgb(236 253 245 / 92%), rgb(240 253 250 / 78%)),
+    #ccfbf1;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 82%),
+    0 4px 12px rgb(15 118 110 / 14%);
+}
+
 .selection-move-preview-count {
   position: absolute;
   left: 50%;
   top: 50%;
   min-width: 78px;
+  max-width: calc(100% - 24px);
   padding: 8px 12px;
   display: inline-flex;
   flex-direction: column;
@@ -97,7 +110,11 @@
 }
 
 .selection-move-preview-count span {
-  font-size: 24px;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .selection-move-preview-count small {

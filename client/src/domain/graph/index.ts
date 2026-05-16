@@ -62,7 +62,19 @@ export function getNodeSize(
   };
 }
 
-export function estimateBodyHeight(body: string, charactersPerLine = 34) {
+export const itemBodyCharactersPerLine = 70;
+const itemNodePaddingHeight = 24;
+const itemNodeGridGap = 9;
+const itemNodeHeaderHeight = 32;
+const itemNodeDividerHeight = 1;
+const itemNodeToolsHeight = 36;
+const itemNodeMinimumTextAreaHeight = 30;
+const itemNodeImageHeight = 130;
+const itemNodeBarsWidgetHeight = 46;
+const itemNodeGaugeWidgetHeight = 48;
+const itemNodeMatrixWidgetHeight = 72;
+
+export function estimateBodyHeight(body: string, charactersPerLine = itemBodyCharactersPerLine) {
   if (!body) {
     return 72;
   }
@@ -74,18 +86,56 @@ export function estimateBodyHeight(body: string, charactersPerLine = 34) {
   return Math.max(72, rows * 17 + 18);
 }
 
+function getItemWidgetHeight(nodeId: string) {
+  const seed = Array.from(nodeId).reduce(
+    (total, character) => total + character.charCodeAt(0),
+    0
+  );
+
+  switch (seed % 4) {
+    case 0:
+      return itemNodeBarsWidgetHeight;
+    case 1:
+      return itemNodeMatrixWidgetHeight;
+    case 2:
+      return itemNodeGaugeWidgetHeight;
+    default:
+      return 0;
+  }
+}
+
+export function getMeasuredItemNodeHeight(node: SyncNode, measuredBodyHeight?: number) {
+  const body = node.data.body ?? node.data.text ?? "";
+  const bodyHeight =
+    typeof measuredBodyHeight === "number" && Number.isFinite(measuredBodyHeight)
+      ? Math.max(itemNodeMinimumTextAreaHeight, Math.ceil(measuredBodyHeight))
+      : estimateBodyHeight(body);
+  const imageHeight = node.data.imageUrl ? itemNodeImageHeight : 0;
+  const widgetHeight = getItemWidgetHeight(node.id);
+  const portHeight = Math.max(0, (node.data.ports?.length ?? 1) - 6) * 22;
+  const rowCount = 4 + (imageHeight > 0 ? 1 : 0) + (widgetHeight > 0 ? 1 : 0);
+  const gapHeight = Math.max(0, rowCount - 1) * itemNodeGridGap;
+
+  return Math.max(
+    190,
+    itemNodePaddingHeight +
+      itemNodeHeaderHeight +
+      itemNodeDividerHeight +
+      bodyHeight +
+      itemNodeToolsHeight +
+      imageHeight +
+      widgetHeight +
+      gapHeight +
+      portHeight
+  );
+}
+
 export function getMinimumNodeHeight(node: SyncNode) {
   if (node.type === "section") {
     return getNodeSize(node, 520, 360).height;
   }
 
-  const body = node.data.body ?? node.data.text ?? "";
-  const ports = node.data.ports?.length ?? 1;
-  const portHeight = Math.max(0, ports - 6) * 22;
-  const imageHeight = node.data.imageUrl ? 144 : 0;
-  const widgetHeight = 72;
-
-  return 176 + estimateBodyHeight(body) + imageHeight + widgetHeight + portHeight;
+  return getMeasuredItemNodeHeight(node);
 }
 
 export function getMinimumNodeWidth(node: SyncNode) {
