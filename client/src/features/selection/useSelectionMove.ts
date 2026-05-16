@@ -1,4 +1,4 @@
-import type { NodeDragItem } from "@vue-flow/core";
+import type { NodeChange, NodeDragItem } from "@vue-flow/core";
 import type { SyncEdge, SyncNode } from "@vue-flow-sync/shared";
 import { computed, nextTick, type ComputedRef } from "vue";
 import type { JsonOp } from "sharedb/lib/client";
@@ -22,6 +22,7 @@ import type { FlowRuntime } from "../../flowRuntime";
 import type {
   SelectionMoveDrag,
   SelectionMovePreviewCounts,
+  SelectionMoveRuntimeSnapshot,
   SelectionMovePreviewShapeKind
 } from "../../flowTypes";
 
@@ -31,6 +32,7 @@ const largeSelectionMovePreviewMode: LargeSelectionMovePreviewMode = "bundle";
 const largeSelectionMovePreviewThreshold = 8;
 const hideSelectedNodesDuringBundleMove = true;
 const maxSelectionMovePreviewShapes = 36;
+const nodePointerMoveThreshold = 3;
 const selectionDragHiddenClass = "selection-drag-hidden";
 
 type UseSelectionMoveOptions = {
@@ -49,6 +51,32 @@ type HiddenNodeClassSnapshot = {
   className: FlowNode["class"];
 };
 
+type RuntimePositionedFlowNode = FlowNode & {
+  computedPosition?: { x: number; y: number; z?: number };
+  dragging?: boolean;
+};
+
+type SelectionMoveStartOptions = {
+  startClientX: number;
+  startClientY: number;
+  currentClientX: number;
+  currentClientY: number;
+  pointerId: number;
+  target: HTMLElement | null;
+  previewElement: HTMLElement | null;
+  movingIds: Set<string>;
+  selectedBounds: SelectionMoveDrag["selectedBounds"];
+  forceVisible?: boolean;
+};
+
+type PendingNodePointerMove = {
+  nodeId: string;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  target: HTMLElement | null;
+};
+
 export function useSelectionMove(
   runtime: FlowRuntime,
   services: FlowEditorServices,
@@ -57,6 +85,8 @@ export function useSelectionMove(
   let selectionMovePointerCaptureTarget: HTMLElement | null = null;
   let selectionMovePreviewElement: HTMLElement | null = null;
   let selectionMoveHiddenClassSnapshots: HiddenNodeClassSnapshot[] = [];
+  let selectionMovePointerId: number | null = null;
+  let pendingNodePointerMove: PendingNodePointerMove | null = null;
 
   const selectionMovePreview = computed(() => {
     const sectionDragPreview = runtime.sectionNodeDragPreview.value;
@@ -212,6 +242,37 @@ export function useSelectionMove(
       width: Number.parseFloat(style.width),
       height: Number.parseFloat(style.height)
     };
+  }
+
+  function getNodeBoundsSnapshot(nodeId: string, allNodes: SyncNode[]) {
+    const graph = createGraphCache(allNodes);
+    const node = graph.nodeById.get(nodeId);
+
+    if (!node) {
+      return null;
+    }
+
+    const bounds = getNodeBounds(node, graph);
+    const viewport = runtime.currentViewport.value;
+    const padding = 4;
+
+    return {
+      left: bounds.x * viewport.zoom + viewport.x - padding,
+      top: bounds.y * viewport.zoom + viewport.y - padding,
+      width: bounds.width * viewport.zoom + padding * 2,
+      height: bounds.height * viewport.zoom + padding * 2
+    };
+  }
+
+  function getSelectionOutlineElement(event: PointerEvent, target: HTMLElement | null) {
+    return (
+      (event.target instanceof Element
+        ? event.target.closest<HTMLElement>(".selected-nodes-outline")
+        : null) ??
+      target?.closest<HTMLElement>(".selected-nodes-outline") ??
+      runtime.canvasPanel.value?.querySelector<HTMLElement>(".selected-nodes-outline") ??
+      null
+    );
   }
 
   function getSelectionMoveDelta(selectionMoveDrag: SelectionMoveDrag) {
@@ -434,10 +495,39 @@ export function useSelectionMove(
       });
     });
 
+    const runtimeSnapshotsById = buildSelectionMoveRuntimeSnapshots(movingIds);
+
     return {
       dragItems,
-      originalPositionsById
+      originalPositionsById,
+      runtimeSnapshotsById
     };
+  }
+
+  function buildSelectionMoveRuntimeSnapshots(movingIds: Set<string>) {
+    const snapshotsById = new Map<string, SelectionMoveRuntimeSnapshot>();
+
+    movingIds.forEach((nodeId) => {
+      const node = runtime.findNode(nodeId) as RuntimePositionedFlowNode | undefined;
+
+      if (!node) {
+        return;
+      }
+
+      const hasComputedPosition = Object.prototype.hasOwnProperty.call(node, "computedPosition");
+      const hasDragging = Object.prototype.hasOwnProperty.call(node, "dragging");
+
+      snapshotsById.set(nodeId, {
+        id: nodeId,
+        position: { ...node.position },
+        hadComputedPosition: hasComputedPosition,
+        computedPosition: node.computedPosition ? { ...node.computedPosition } : undefined,
+        hadDragging: hasDragging,
+        dragging: node.dragging
+      });
+    });
+
+    return snapshotsById;
   }
 
   function updateSelectionDragItemPositions(selectionMoveDrag: SelectionMoveDrag) {
@@ -461,13 +551,125 @@ export function useSelectionMove(
     return changed;
   }
 
+  function getDragItemRuntimePosition(dragItem: NodeDragItem) {
+    if (!dragItem.parentNode) {
+      return { ...dragItem.position };
+    }
+
+    const parentNode = runtime.findNode(dragItem.parentNode) as RuntimePositionedFlowNode | undefined;
+
+    return {
+      x: Math.round(dragItem.position.x - (parentNode?.computedPosition?.x ?? 0)),
+      y: Math.round(dragItem.position.y - (parentNode?.computedPosition?.y ?? 0))
+    };
+  }
+
+  function getDragItemComputedPosition(dragItem: NodeDragItem, node: RuntimePositionedFlowNode) {
+    return {
+      ...(node.computedPosition ?? { z: 0 }),
+      x: dragItem.position.x,
+      y: dragItem.position.y
+    };
+  }
+
+  function applyRuntimeDragItemPositions(dragItems: NodeDragItem[], dragging: boolean) {
+    const changes: NodeChange[] = [];
+    const runtimeUpdates: Array<{
+      id: string;
+      position: { x: number; y: number };
+      computedPosition: { x: number; y: number; z?: number };
+    }> = [];
+
+    dragItems.forEach((dragItem) => {
+      const node = runtime.findNode(dragItem.id) as RuntimePositionedFlowNode | undefined;
+
+      if (!node) {
+        return;
+      }
+
+      const nextPosition = getDragItemRuntimePosition(dragItem);
+      const nextComputedPosition = getDragItemComputedPosition(dragItem, node);
+      const positionChanged =
+        node.position.x !== nextPosition.x ||
+        node.position.y !== nextPosition.y ||
+        node.dragging !== dragging;
+      const computedPositionChanged =
+        node.computedPosition?.x !== nextComputedPosition.x ||
+        node.computedPosition?.y !== nextComputedPosition.y;
+
+      if (!positionChanged && !computedPositionChanged) {
+        return;
+      }
+
+      if (positionChanged) {
+        changes.push({
+          id: dragItem.id,
+          type: "position",
+          position: nextPosition,
+          from: dragItem.from,
+          dragging
+        });
+      }
+
+      runtimeUpdates.push({
+        id: dragItem.id,
+        position: nextPosition,
+        computedPosition: nextComputedPosition
+      });
+    });
+
+    if (changes.length > 0) {
+      runtime.applyNodeChanges(changes);
+    }
+
+    runtimeUpdates.forEach((update) => {
+      const node = runtime.findNode(update.id) as RuntimePositionedFlowNode | undefined;
+
+      if (!node) {
+        return;
+      }
+
+      if (
+        node.position.x !== update.position.x ||
+        node.position.y !== update.position.y
+      ) {
+        node.position = update.position;
+      }
+
+      node.computedPosition = update.computedPosition;
+      node.dragging = dragging;
+    });
+  }
+
+  function restoreSelectionMoveRuntimeSnapshots(drag: SelectionMoveDrag) {
+    drag.runtimeSnapshotsById.forEach((snapshot) => {
+      const node = runtime.findNode(snapshot.id) as RuntimePositionedFlowNode | undefined;
+
+      if (!node) {
+        return;
+      }
+
+      node.position = { ...snapshot.position };
+
+      if (snapshot.hadComputedPosition && snapshot.computedPosition) {
+        node.computedPosition = { ...snapshot.computedPosition };
+      } else {
+        delete node.computedPosition;
+      }
+
+      if (snapshot.hadDragging) {
+        node.dragging = snapshot.dragging;
+      } else {
+        delete node.dragging;
+      }
+    });
+  }
+
   function applyVisibleSelectionMove(selectionMoveDrag: SelectionMoveDrag, dragging: boolean) {
     const changed = updateSelectionDragItemPositions(selectionMoveDrag);
 
-    if (changed) {
-      runtime.updateNodePositions(selectionMoveDrag.dragItems, true, dragging);
-    } else if (!dragging) {
-      runtime.updateNodePositions(selectionMoveDrag.dragItems, false, false);
+    if (changed || !dragging) {
+      applyRuntimeDragItemPositions(selectionMoveDrag.dragItems, dragging);
     }
   }
 
@@ -585,12 +787,7 @@ export function useSelectionMove(
     drag: SelectionMoveDrag,
     changes: Array<{ index: number; oldNode: SyncNode; nextNode: SyncNode }>
   ) {
-    if (drag.mode === "bundle") {
-      applyVisibleSelectionMove(drag, false);
-    } else {
-      updateSelectionDragItemPositions(drag);
-      runtime.updateNodePositions(drag.dragItems, false, false);
-    }
+    applyVisibleSelectionMove(drag, false);
 
     services.submitOperation(
       changes.map(({ index, oldNode, nextNode }) => ({
@@ -626,6 +823,75 @@ export function useSelectionMove(
     applySelectionMoveFrame();
   }
 
+  function beginSelectionMove(options: SelectionMoveStartOptions) {
+    const normalizedOriginalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode);
+    const movingIds = options.movingIds;
+
+    if (movingIds.size === 0) {
+      return false;
+    }
+
+    const hiddenIds = buildSelectionMoveHiddenIds(normalizedOriginalNodes, movingIds);
+    const { counts: previewCounts, shapeKinds: previewShapeKinds } =
+      buildSelectionMovePreviewMetadata(normalizedOriginalNodes, movingIds, hiddenIds);
+    const movingIndexes = normalizedOriginalNodes
+      .map((node, index) => (movingIds.has(node.id) ? index : -1))
+      .filter((index) => index >= 0);
+    const mode =
+      !options.forceVisible &&
+      largeSelectionMovePreviewMode === "bundle" &&
+      hiddenIds.size > largeSelectionMovePreviewThreshold
+        ? "bundle"
+        : "visible";
+    const originalSyncNodesById = new Map(normalizedOriginalNodes.map((node) => [node.id, node]));
+    const { dragItems, originalPositionsById, runtimeSnapshotsById } = buildSelectionMoveDragMetadata(
+      normalizedOriginalNodes,
+      movingIds
+    );
+
+    if (dragItems.length === 0 || movingIndexes.length === 0) {
+      return false;
+    }
+
+    selectionMovePointerCaptureTarget = options.target;
+    selectionMovePointerId = options.pointerId;
+    clearSelectionMovePreview();
+    selectionMovePreviewElement = options.previewElement;
+    if (selectionMovePreviewElement) {
+      selectionMovePreviewElement.style.willChange = "transform";
+    }
+    if (options.target && typeof options.target.setPointerCapture === "function") {
+      try {
+        options.target.setPointerCapture(options.pointerId);
+      } catch {
+        selectionMovePointerCaptureTarget = null;
+      }
+    }
+
+    runtime.interaction.selectionMoveDrag = {
+      mode,
+      startClientX: options.startClientX,
+      startClientY: options.startClientY,
+      currentClientX: options.currentClientX,
+      currentClientY: options.currentClientY,
+      originalSyncNodes: normalizedOriginalNodes,
+      originalSyncNodesById,
+      originalPositionsById,
+      runtimeSnapshotsById,
+      dragItems,
+      movingIds,
+      movingIndexes,
+      hiddenIds,
+      previewCounts,
+      previewShapeKinds,
+      selectedBounds: options.selectedBounds
+    };
+    hideBundleSelectionNodes(runtime.interaction.selectionMoveDrag);
+    runtime.isMovingSelection.value = true;
+
+    return true;
+  }
+
   function handleSelectedBoundsPointerDown(event: PointerEvent) {
     if (!runtime.isLoggedIn.value || event.button !== 0) {
       return;
@@ -643,69 +909,33 @@ export function useSelectionMove(
 
     const normalizedOriginalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode);
     const movingIds = getMovableSelectedIds(normalizedOriginalNodes);
-    const hiddenIds = buildSelectionMoveHiddenIds(normalizedOriginalNodes, movingIds);
-    const { counts: previewCounts, shapeKinds: previewShapeKinds } =
-      buildSelectionMovePreviewMetadata(normalizedOriginalNodes, movingIds, hiddenIds);
-    const movingIndexes = normalizedOriginalNodes
-      .map((node, index) => (movingIds.has(node.id) ? index : -1))
-      .filter((index) => index >= 0);
-    const mode =
-      largeSelectionMovePreviewMode === "bundle" &&
-      hiddenIds.size > largeSelectionMovePreviewThreshold
-        ? "bundle"
-        : "visible";
-    const originalSyncNodesById = new Map(normalizedOriginalNodes.map((node) => [node.id, node]));
-    const { dragItems, originalPositionsById } = buildSelectionMoveDragMetadata(
-      normalizedOriginalNodes,
-      movingIds
-    );
     const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-    const previewElement =
-      (event.target instanceof Element
-        ? event.target.closest<HTMLElement>(".selected-nodes-outline")
-        : null) ??
-      target?.closest<HTMLElement>(".selected-nodes-outline") ??
-      runtime.canvasPanel.value?.querySelector<HTMLElement>(".selected-nodes-outline") ??
-      null;
 
-    selectionMovePointerCaptureTarget = target;
-    clearSelectionMovePreview();
-    selectionMovePreviewElement = previewElement;
-    if (selectionMovePreviewElement) {
-      selectionMovePreviewElement.style.willChange = "transform";
-    }
-    if (target && typeof target.setPointerCapture === "function") {
-      try {
-        target.setPointerCapture(event.pointerId);
-      } catch {
-        selectionMovePointerCaptureTarget = null;
-      }
-    }
-
-    runtime.interaction.selectionMoveDrag = {
-      mode,
+    const started = beginSelectionMove({
       startClientX: event.clientX,
       startClientY: event.clientY,
       currentClientX: event.clientX,
       currentClientY: event.clientY,
-      originalSyncNodes: normalizedOriginalNodes,
-      originalSyncNodesById,
-      originalPositionsById,
-      dragItems,
+      pointerId: event.pointerId,
+      target,
+      previewElement: getSelectionOutlineElement(event, target),
       movingIds,
-      movingIndexes,
-      hiddenIds,
-      previewCounts,
-      previewShapeKinds,
       selectedBounds: getSelectedBoundsSnapshot()
-    };
-    hideBundleSelectionNodes(runtime.interaction.selectionMoveDrag);
-    runtime.isMovingSelection.value = true;
+    });
+
+    if (!started) {
+      return;
+    }
+
     window.addEventListener("pointermove", handleSelectedBoundsPointerMove, { capture: true });
     window.addEventListener("pointerup", handleSelectedBoundsPointerUp, { capture: true, once: true });
   }
 
   function handleSelectedBoundsPointerMove(event: PointerEvent) {
+    if (selectionMovePointerId !== null && event.pointerId !== selectionMovePointerId) {
+      return;
+    }
+
     const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
 
     if (!selectionMoveDrag) {
@@ -719,9 +949,15 @@ export function useSelectionMove(
     scheduleSelectionMoveFrame();
   }
 
-  function handleSelectedBoundsPointerUp(event: PointerEvent) {
-    window.removeEventListener("pointermove", handleSelectedBoundsPointerMove, true);
-    runtime.isResizingNode.value = false;
+  function clearSelectionMovePresentation() {
+    clearSelectionMovePreview();
+    clearSectionNodeDragPreview();
+  }
+
+  function finishSelectionMovePointerUp(event: PointerEvent) {
+    if (selectionMovePointerId !== null && event.pointerId !== selectionMovePointerId) {
+      return;
+    }
 
     const drag = runtime.interaction.selectionMoveDrag;
     if (drag) {
@@ -733,26 +969,245 @@ export function useSelectionMove(
       selectionMovePointerCaptureTarget.releasePointerCapture(event.pointerId);
     }
     selectionMovePointerCaptureTarget = null;
+    selectionMovePointerId = null;
 
     if (!drag) {
       runtime.interaction.selectionMoveDrag = null;
       runtime.isMovingSelection.value = false;
       services.scheduleSelectionBoundsRefresh();
-      clearSelectionMovePreview();
+      clearSelectionMovePresentation();
       return;
     }
 
     event.preventDefault();
     event.stopImmediatePropagation();
+    runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350;
     const committed = commitMovedSelectedNodes(drag);
     runtime.interaction.selectionMoveDrag = null;
     runtime.isMovingSelection.value = false;
     services.scheduleSelectionBoundsRefresh();
     if (committed) {
-      nextTick(clearSelectionMovePreview);
+      nextTick(clearSelectionMovePresentation);
     } else {
-      clearSelectionMovePreview();
+      clearSelectionMovePresentation();
     }
+  }
+
+  function handleSelectedBoundsPointerUp(event: PointerEvent) {
+    if (selectionMovePointerId !== null && event.pointerId !== selectionMovePointerId) {
+      return;
+    }
+
+    window.removeEventListener("pointermove", handleSelectedBoundsPointerMove, true);
+    runtime.isResizingNode.value = false;
+    finishSelectionMovePointerUp(event);
+  }
+
+  function attachSelectionMovePreviewElementOnNextTick() {
+    nextTick(() => {
+      const drag = runtime.interaction.selectionMoveDrag;
+
+      if (!drag || selectionMovePreviewElement) {
+        return;
+      }
+
+      const element = runtime.canvasPanel.value?.querySelector<HTMLElement>(".selected-nodes-outline") ?? null;
+
+      if (!element) {
+        return;
+      }
+
+      selectionMovePreviewElement = element;
+      selectionMovePreviewElement.style.willChange = "transform";
+      paintSelectionMovePreview(drag);
+    });
+  }
+
+  function startPendingNodePointerMove(event: PointerEvent, pending: PendingNodePointerMove) {
+    const normalizedOriginalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode);
+    const selectedIds = options.getSelectedNodeIds();
+    const selectedIdSet = new Set(selectedIds);
+    const node = normalizedOriginalNodes.find((candidate) => candidate.id === pending.nodeId);
+
+    if (!node) {
+      return false;
+    }
+
+    const moveSelection = selectedIds.length > 1 && selectedIdSet.has(pending.nodeId);
+    const movingIds = moveSelection
+      ? getMovableSelectedIds(normalizedOriginalNodes)
+      : new Set([pending.nodeId]);
+    const useSingleSectionPreview = !moveSelection && node.type === "section";
+    const selectedBounds = moveSelection
+      ? getSelectedBoundsSnapshot()
+      : useSingleSectionPreview
+        ? getNodeBoundsSnapshot(pending.nodeId, normalizedOriginalNodes)
+        : null;
+    const started = beginSelectionMove({
+      startClientX: pending.startClientX,
+      startClientY: pending.startClientY,
+      currentClientX: event.clientX,
+      currentClientY: event.clientY,
+      pointerId: pending.pointerId,
+      target: pending.target,
+      previewElement: moveSelection
+        ? getSelectionOutlineElement(event, pending.target)
+        : null,
+      movingIds,
+      selectedBounds,
+      forceVisible: useSingleSectionPreview
+    });
+
+    if (!started) {
+      return false;
+    }
+
+    if (useSingleSectionPreview) {
+      handleSectionNodeDragStart(pending.nodeId);
+      attachSelectionMovePreviewElementOnNextTick();
+    }
+
+    runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350;
+    return true;
+  }
+
+  function clearPendingNodePointerMove(event?: PointerEvent) {
+    if (
+      event &&
+      selectionMovePointerCaptureTarget?.hasPointerCapture(event.pointerId)
+    ) {
+      selectionMovePointerCaptureTarget.releasePointerCapture(event.pointerId);
+    }
+
+    pendingNodePointerMove = null;
+    selectionMovePointerCaptureTarget = null;
+    selectionMovePointerId = null;
+    window.removeEventListener("pointermove", handleNodePointerMove, true);
+    window.removeEventListener("pointerup", handleNodePointerUp, true);
+    window.removeEventListener("pointercancel", handleNodePointerCancel, true);
+  }
+
+  function handleNodePointerMove(event: PointerEvent) {
+    if (runtime.interaction.selectionMoveDrag) {
+      handleSelectedBoundsPointerMove(event);
+      return;
+    }
+
+    const pending = pendingNodePointerMove;
+
+    if (!pending || event.pointerId !== pending.pointerId) {
+      return;
+    }
+
+    if (!runtime.interaction.selectionMoveDrag) {
+      const movedPastThreshold =
+        Math.abs(event.clientX - pending.startClientX) > nodePointerMoveThreshold ||
+        Math.abs(event.clientY - pending.startClientY) > nodePointerMoveThreshold;
+
+      if (!movedPastThreshold) {
+        return;
+      }
+
+      if (!startPendingNodePointerMove(event, pending)) {
+        clearPendingNodePointerMove(event);
+        return;
+      }
+
+      pendingNodePointerMove = null;
+    }
+
+    handleSelectedBoundsPointerMove(event);
+  }
+
+  function handleNodePointerUp(event: PointerEvent) {
+    const pending = pendingNodePointerMove;
+
+    if (
+      (pending && event.pointerId !== pending.pointerId) ||
+      (selectionMovePointerId !== null && event.pointerId !== selectionMovePointerId)
+    ) {
+      return;
+    }
+
+    window.removeEventListener("pointermove", handleNodePointerMove, true);
+    window.removeEventListener("pointerup", handleNodePointerUp, true);
+    window.removeEventListener("pointercancel", handleNodePointerCancel, true);
+    pendingNodePointerMove = null;
+    runtime.isResizingNode.value = false;
+
+    if (!runtime.interaction.selectionMoveDrag) {
+      if (selectionMovePointerCaptureTarget?.hasPointerCapture(event.pointerId)) {
+        selectionMovePointerCaptureTarget.releasePointerCapture(event.pointerId);
+      }
+      selectionMovePointerCaptureTarget = null;
+      selectionMovePointerId = null;
+      return;
+    }
+
+    finishSelectionMovePointerUp(event);
+  }
+
+  function handleNodePointerCancel(event: PointerEvent) {
+    const pending = pendingNodePointerMove;
+
+    if (
+      (pending && event.pointerId !== pending.pointerId) ||
+      (selectionMovePointerId !== null && event.pointerId !== selectionMovePointerId)
+    ) {
+      return;
+    }
+
+    clearPendingNodePointerMove(event);
+    if (runtime.interaction.selectionMoveDrag?.frame) {
+      window.cancelAnimationFrame(runtime.interaction.selectionMoveDrag.frame);
+      runtime.interaction.selectionMoveDrag.frame = undefined;
+    }
+    if (runtime.interaction.selectionMoveDrag) {
+      restoreSelectionMoveRuntimeSnapshots(runtime.interaction.selectionMoveDrag);
+    }
+    runtime.interaction.selectionMoveDrag = null;
+    runtime.isMovingSelection.value = false;
+    runtime.isResizingNode.value = false;
+    clearSelectionMovePresentation();
+    services.scheduleSelectionBoundsRefresh();
+  }
+
+  function beginNodePointerMove(event: PointerEvent, nodeId: string) {
+    if (
+      !runtime.isLoggedIn.value ||
+      event.button !== 0 ||
+      runtime.interaction.selectionMoveDrag ||
+      pendingNodePointerMove
+    ) {
+      return false;
+    }
+
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLElement>(".vue-flow__node[data-id]")
+      : null;
+
+    pendingNodePointerMove = {
+      nodeId,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      target
+    };
+    selectionMovePointerCaptureTarget = target;
+    selectionMovePointerId = event.pointerId;
+    if (target && typeof target.setPointerCapture === "function") {
+      try {
+        target.setPointerCapture(event.pointerId);
+      } catch {
+        selectionMovePointerCaptureTarget = null;
+      }
+    }
+
+    window.addEventListener("pointermove", handleNodePointerMove, { capture: true });
+    window.addEventListener("pointerup", handleNodePointerUp, { capture: true, once: true });
+    window.addEventListener("pointercancel", handleNodePointerCancel, { capture: true, once: true });
+
+    return true;
   }
 
   function commitMovedSelectedNodes(drag: SelectionMoveDrag) {
@@ -765,7 +1220,7 @@ export function useSelectionMove(
     }
 
     if (!hasCommittedSelectionMovePositionChange(drag)) {
-      runtime.updateNodePositions(drag.dragItems, false, false);
+      restoreSelectionMoveRuntimeSnapshots(drag);
       return false;
     }
 
@@ -829,19 +1284,27 @@ export function useSelectionMove(
   function cleanupSelectionMove() {
     window.removeEventListener("pointermove", handleSelectedBoundsPointerMove, true);
     window.removeEventListener("pointerup", handleSelectedBoundsPointerUp, true);
+    window.removeEventListener("pointermove", handleNodePointerMove, true);
+    window.removeEventListener("pointerup", handleNodePointerUp, true);
+    window.removeEventListener("pointercancel", handleNodePointerCancel, true);
     if (runtime.interaction.selectionMoveDrag?.frame) {
       window.cancelAnimationFrame(runtime.interaction.selectionMoveDrag.frame);
       runtime.interaction.selectionMoveDrag.frame = undefined;
     }
-    clearSelectionMovePreview();
+    if (runtime.interaction.selectionMoveDrag) {
+      restoreSelectionMoveRuntimeSnapshots(runtime.interaction.selectionMoveDrag);
+    }
+    clearSelectionMovePresentation();
     runtime.interaction.selectionMoveDrag = null;
     selectionMovePointerCaptureTarget = null;
-    clearSectionNodeDragPreview();
+    selectionMovePointerId = null;
+    pendingNodePointerMove = null;
   }
 
   return {
     cleanupSelectionMove,
     clearSectionNodeDragPreview,
+    beginNodePointerMove,
     handleSelectedBoundsPointerDown,
     handleSectionNodeDragStart,
     selectionMovePreview

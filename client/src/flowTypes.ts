@@ -42,6 +42,15 @@ export type SectionNodeDragPreview = {
   hiddenIds: Set<string>;
 };
 
+export type SelectionMoveRuntimeSnapshot = {
+  id: string;
+  position: { x: number; y: number };
+  hadComputedPosition: boolean;
+  computedPosition?: { x: number; y: number; z?: number };
+  hadDragging: boolean;
+  dragging?: boolean;
+};
+
 export type SelectionMoveDrag = {
   mode: SelectionMoveDragMode;
   startClientX: number;
@@ -51,6 +60,7 @@ export type SelectionMoveDrag = {
   originalSyncNodes: SyncNode[];
   originalSyncNodesById: Map<string, SyncNode>;
   originalPositionsById: Map<string, { x: number; y: number }>;
+  runtimeSnapshotsById: Map<string, SelectionMoveRuntimeSnapshot>;
   dragItems: NodeDragItem[];
   movingIds: Set<string>;
   movingIndexes: number[];

@@ -49,7 +49,6 @@ const {
   isLoggedIn,
   isMovingSelection,
   isHoveringSelection,
-  isResizingNode,
   isValidSectionConnection,
   MarkerType,
   nodes,
@@ -108,7 +107,7 @@ const {
       :min-zoom="0.15"
       :multi-selection-key-code="null"
       :nodes-connectable="isLoggedIn"
-      :nodes-draggable="isLoggedIn && !isResizingNode"
+      :nodes-draggable="false"
       :pan-on-drag="isLoggedIn ? [2] : false"
       :select-nodes-on-drag="false"
       :selection-key-code="null"

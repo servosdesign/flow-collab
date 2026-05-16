@@ -36,6 +36,8 @@ type LassoPointerRect = {
 
 const nodeInteractiveSelector =
   "input, textarea, button, label, select, [contenteditable], [data-node-interactive]";
+const nodeMoveBlockedSelector =
+  `${nodeInteractiveSelector}, .vue-flow__handle, .vue-flow__resize-control, .node-resizer-layer`;
 
 export function useSelection(runtime: FlowRuntime, services: FlowEditorServices) {
   let lassoBoundsCache: LassoNodeBounds[] = [];
@@ -169,12 +171,30 @@ export function useSelection(runtime: FlowRuntime, services: FlowEditorServices)
     return target instanceof Element && Boolean(target.closest(nodeInteractiveSelector));
   }
 
+  function isNodeMoveBlockedTarget(target: EventTarget | null) {
+    return target instanceof Element && Boolean(target.closest(nodeMoveBlockedSelector));
+  }
+
+  function getNodeElementFromTarget(target: EventTarget | null) {
+    return target instanceof Element
+      ? target.closest<HTMLElement>(".vue-flow__node[data-id]")
+      : null;
+  }
+
   function handleNodeClick(payload: NodeMouseEvent) {
     if (!runtime.isLoggedIn.value) {
       return;
     }
 
     if (isNodeInteractiveTarget(payload.event.target)) {
+      return;
+    }
+
+    if (Date.now() < runtime.interaction.ignoreVueFlowSelectionUntil) {
+      if (payload.event instanceof MouseEvent) {
+        payload.event.stopPropagation();
+      }
+
       return;
     }
 
@@ -461,16 +481,23 @@ export function useSelection(runtime: FlowRuntime, services: FlowEditorServices)
       return;
     }
 
-    const selectedNodeElement = event.target instanceof Element
-      ? event.target.closest<HTMLElement>(".vue-flow__node[data-id]")
-      : null;
+    const selectedNodeElement = getNodeElementFromTarget(event.target);
 
-    if (
-      selectedIds.length > 1 &&
-      selectedNodeElement?.dataset.id &&
-      selectedIds.includes(selectedNodeElement.dataset.id)
-    ) {
+    if (selectedNodeElement?.dataset.id) {
+      const nodeId = selectedNodeElement.dataset.id;
+      const shouldMoveSelection = selectedIds.length > 1 && selectedIds.includes(nodeId);
+
+      if (isNodeMoveBlockedTarget(event.target)) {
+        return;
+      }
+
+      if (!shouldMoveSelection) {
+        setSelectedNodes([nodeId]);
+      }
+
       runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350;
+      closeContextMenu();
+      selectionMove.beginNodePointerMove(event, nodeId);
       return;
     }
 
