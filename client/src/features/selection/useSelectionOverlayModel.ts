@@ -18,17 +18,25 @@ export function useSelectionOverlayModel(
       return null;
     }
 
-    runtime.selectionBoundsVersion.value;
-    const graphNodes = services.getCurrentSyncNodes();
-    const graph = createGraphCache(graphNodes);
-    const viewport = runtime.currentViewport.value;
+    const selectedNodeCount = runtime.selectedNodeIds.value.size;
     const sectionDragPreview = runtime.sectionNodeDragPreview.value;
     const selectionMoveDrag = runtime.interaction.selectionMoveDrag;
+    const isMovingSelection = runtime.isMovingSelection.value;
 
-    if (
-      selectionMoveDrag?.selectedBounds &&
-      (sectionDragPreview || runtime.selectedNodeIds.value.size > 1)
-    ) {
+    const hasSelectionMoveBounds = Boolean(
+      isMovingSelection &&
+        selectionMoveDrag?.selectedBounds &&
+        (sectionDragPreview || selectedNodeCount > 1)
+    );
+
+    if (!hasSelectionMoveBounds && !sectionDragPreview && selectedNodeCount < 2) {
+      return null;
+    }
+
+    runtime.selectionBoundsVersion.value;
+    const viewport = runtime.currentViewport.value;
+
+    if (hasSelectionMoveBounds && selectionMoveDrag?.selectedBounds) {
       return {
         left: `${selectionMoveDrag.selectedBounds.left}px`,
         top: `${selectionMoveDrag.selectedBounds.top}px`,
@@ -36,6 +44,9 @@ export function useSelectionOverlayModel(
         height: `${selectionMoveDrag.selectedBounds.height}px`
       };
     }
+
+    const graphNodes = services.getCurrentSyncNodes();
+    const graph = createGraphCache(graphNodes);
 
     if (sectionDragPreview) {
       const section = graph.nodeById.get(sectionDragPreview.sectionId);
@@ -55,7 +66,7 @@ export function useSelectionOverlayModel(
       };
     }
 
-    if (runtime.selectedNodeIds.value.size < 2) {
+    if (selectedNodeCount < 2) {
       return null;
     }
 

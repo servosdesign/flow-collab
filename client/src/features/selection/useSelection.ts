@@ -181,6 +181,20 @@ export function useSelection(runtime: FlowRuntime, services: FlowEditorServices)
       : null;
   }
 
+  function getCachedFlowCoordinate(clientX: number, clientY: number) {
+    const bounds = runtime.canvasClientBounds.value;
+    const viewport = runtime.currentViewport.value;
+
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0 || viewport.zoom <= 0) {
+      return runtime.screenToFlowCoordinate({ x: clientX, y: clientY });
+    }
+
+    return {
+      x: (clientX - bounds.left - viewport.x) / viewport.zoom,
+      y: (clientY - bounds.top - viewport.y) / viewport.zoom
+    };
+  }
+
   function handleNodeClick(payload: NodeMouseEvent) {
     if (!runtime.isLoggedIn.value) {
       return;
@@ -574,9 +588,7 @@ export function useSelection(runtime: FlowRuntime, services: FlowEditorServices)
         return;
       }
 
-      services.scheduleCursorUpdate(
-        runtime.screenToFlowCoordinate({ x: nextClientX, y: nextClientY })
-      );
+      services.scheduleCursorUpdate(getCachedFlowCoordinate(nextClientX, nextClientY));
     });
   }
 

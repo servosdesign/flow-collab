@@ -26,6 +26,13 @@ export type DragSelection = {
   currentLocalY: number;
 };
 
+export type CanvasClientBounds = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 export type SelectionMoveDragMode = "visible" | "bundle";
 export type SelectionMovePreviewShapeKind = "item" | "section";
 
@@ -111,6 +118,7 @@ export type FlowAppState = {
   duplicateCount: Ref<number>;
   collaborators: Ref<SyncPresenceUser[]>;
   canvasPanel: Ref<HTMLElement | null>;
+  canvasClientBounds: Ref<CanvasClientBounds | null>;
   canvasSize: Ref<{ width: number; height: number }>;
   selectionBoundsVersion: Ref<number>;
   isHoveringSelection: Ref<boolean>;

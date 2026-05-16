@@ -11,6 +11,12 @@ export function useViewport(runtime: FlowRuntime) {
       return;
     }
 
+    runtime.canvasClientBounds.value = {
+      left: bounds.left,
+      top: bounds.top,
+      width: bounds.width,
+      height: bounds.height
+    };
     runtime.canvasSize.value = {
       width: bounds.width,
       height: bounds.height

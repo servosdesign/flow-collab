@@ -56,6 +56,7 @@ export function useEditorViewModels({
     loginPasswordInput,
     nodes,
     pendingCreate,
+    selectedNodeIds,
     status,
     userId
   } = state;
@@ -120,8 +121,12 @@ export function useEditorViewModels({
     return selectedUsersByNodeId.value.get(nodeId) ?? emptySelectedUsers;
   }
 
+  function isMiniMapNodeSelected(node: { id?: string; selected?: boolean }) {
+    return Boolean((node.id && selectedNodeIds.value.has(node.id)) || node.selected);
+  }
+
   function getMiniMapNodeColor(node: { id?: string; type?: string; selected?: boolean }) {
-    if ((node.id && selection.isNodeSelected(node.id)) || node.selected) {
+    if (isMiniMapNodeSelected(node)) {
       return "#dbeafe";
     }
 
@@ -129,7 +134,7 @@ export function useEditorViewModels({
   }
 
   function getMiniMapNodeStroke(node: { id?: string; type?: string; selected?: boolean }) {
-    if ((node.id && selection.isNodeSelected(node.id)) || node.selected) {
+    if (isMiniMapNodeSelected(node)) {
       return "#1a73e8";
     }
 

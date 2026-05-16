@@ -2,7 +2,7 @@ import { computed, ref, shallowRef } from "vue";
 import type { FlowNodeKind, FlowViewport, SyncFlowDocument, SyncPresenceDocument, SyncPresenceUser } from "@vue-flow-sync/shared";
 import type { ShareDocument } from "sharedb/lib/client";
 import type { FlowEdge, FlowNode } from "./graph";
-import type { ContextTarget, DragSelection, FlowAppState } from "./flowTypes";
+import type { CanvasClientBounds, ContextTarget, DragSelection, FlowAppState } from "./flowTypes";
 
 const userColors = ["#0f766e", "#2563eb", "#dc2626", "#9333ea", "#d97706", "#0891b2"];
 
@@ -33,6 +33,7 @@ export function createFlowAppState(): FlowAppState {
     duplicateCount: ref(1),
     collaborators: ref<SyncPresenceUser[]>([]),
     canvasPanel: ref<HTMLElement | null>(null),
+    canvasClientBounds: ref<CanvasClientBounds | null>(null),
     canvasSize: ref({ width: 0, height: 0 }),
     selectionBoundsVersion: ref(0),
     isHoveringSelection: ref(false),
