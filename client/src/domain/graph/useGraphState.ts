@@ -7,8 +7,8 @@ import {
   normalizeNode,
   type FlowEdge,
   type FlowNode
-} from "./graph";
-import type { FlowRuntime } from "./flowRuntime";
+} from ".";
+import type { FlowRuntime } from "../../flowRuntime";
 
 export function useGraphState(runtime: FlowRuntime) {
   function withSelectionState(flowNodes: FlowNode[]) {

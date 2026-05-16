@@ -1,29 +1,20 @@
 import { MarkerType, type Connection as FlowConnection, type EdgeUpdateEvent } from "@vue-flow/core";
 import { nextTick } from "vue";
-import type { SyncNode } from "@vue-flow-sync/shared";
 import {
   createGraphCache,
   getEdgeRenderType,
   type FlowEdge
-} from "./graph";
-import type { FlowRuntime } from "./flowRuntime";
+} from "../../domain/graph";
+import type { FlowEditorServices } from "../../app/flowEditorServices";
+import type { FlowRuntime } from "../../flowRuntime";
 
-function getAction<T>(runtime: FlowRuntime, name: string) {
-  return runtime.actions[name] as T;
-}
-
-export function useConnections(runtime: FlowRuntime) {
+export function useConnections(runtime: FlowRuntime, services: FlowEditorServices) {
   function handleConnect(connection: FlowConnection) {
     if (!runtime.isLoggedIn.value) {
       return;
     }
 
-    const isValidSectionConnection = getAction<(connection: FlowConnection) => boolean>(
-      runtime,
-      "isValidSectionConnection"
-    );
-
-    if (!isValidSectionConnection(connection)) {
+    if (!services.isValidSectionConnection(connection)) {
       runtime.errorMessage.value =
         "Section boundaries only connect direct children or top-level outside nodes.";
       runtime.status.value = "Error";
@@ -36,8 +27,7 @@ export function useConnections(runtime: FlowRuntime) {
       return;
     }
 
-    const getCurrentSyncNodes = getAction<() => SyncNode[]>(runtime, "getCurrentSyncNodes");
-    const graph = createGraphCache(getCurrentSyncNodes());
+    const graph = createGraphCache(services.getCurrentSyncNodes());
     const nextEdge = {
       ...connection,
       id: `edge-${connection.source}-${connection.target}-${Date.now()}`,
@@ -50,7 +40,7 @@ export function useConnections(runtime: FlowRuntime) {
     runtime.addEdges([nextEdge]);
     nextTick(() => {
       runtime.updateNodeInternals?.([connection.source, connection.target].filter(Boolean) as string[]);
-      getAction<() => void>(runtime, "submitGraphSnapshot")();
+      services.submitGraphSnapshot();
     });
   }
 
@@ -74,13 +64,13 @@ export function useConnections(runtime: FlowRuntime) {
       edge.targetHandle = payload.connection.targetHandle ?? edge.targetHandle ?? null;
       edge.type = getEdgeRenderType(
         edge,
-        createGraphCache(getAction<() => SyncNode[]>(runtime, "getCurrentSyncNodes")())
+        createGraphCache(services.getCurrentSyncNodes())
       );
       edge.markerEnd = MarkerType.ArrowClosed;
       runtime.edges.value = nextEdges;
     }
 
-    nextTick(() => getAction<() => void>(runtime, "submitGraphSnapshot")());
+    nextTick(() => services.submitGraphSnapshot());
   }
 
   return {

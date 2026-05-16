@@ -1,0 +1,11 @@
+﻿@media (max-width: 760px) {
+  .topbar {
+    height: auto;
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .canvas-panel {
+    min-height: calc(100vh - 82px);
+  }
+}

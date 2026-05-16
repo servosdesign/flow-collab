@@ -1,0 +1,36 @@
+﻿.remote-cursor {
+  position: absolute;
+  z-index: 15;
+  pointer-events: none;
+  transform: translate(0, 0);
+}
+
+.cursor-pointer {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 24px;
+  background: var(--cursor-color);
+  clip-path: polygon(0 0, 0 22px, 6px 17px, 10px 24px, 14px 22px, 10px 15px, 18px 15px);
+  filter: drop-shadow(0 2px 3px rgb(22 33 43 / 24%));
+}
+
+.cursor-label {
+  position: absolute;
+  left: 14px;
+  top: 18px;
+  width: max-content;
+  max-width: 140px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  background: var(--cursor-color);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0 7px;
+  transform: translate(8px, -2px);
+}
+

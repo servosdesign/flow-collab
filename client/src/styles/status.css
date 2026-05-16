@@ -1,0 +1,27 @@
+﻿.error-bar {
+  position: absolute;
+  z-index: 8;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid #f4a7a7;
+  border-radius: 8px;
+  background: #fff7f7;
+  color: #9f1d16;
+  font-size: 14px;
+}
+
+.loading-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(246 248 251 / 72%);
+}
+

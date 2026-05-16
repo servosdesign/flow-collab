@@ -1,15 +1,11 @@
 import type { EdgeMouseEvent, NodeMouseEvent } from "@vue-flow/core";
 import { computed } from "vue";
 import type { SyncEdge } from "@vue-flow-sync/shared";
-import type { JsonOp } from "sharedb/lib/client";
-import type { FlowEdge } from "./graph";
-import type { FlowRuntime } from "./flowRuntime";
+import type { FlowEditorServices } from "../../app/flowEditorServices";
+import type { FlowEdge } from "../../domain/graph";
+import type { FlowRuntime } from "../../flowRuntime";
 
-function getAction<T>(runtime: FlowRuntime, name: string) {
-  return runtime.actions[name] as T;
-}
-
-export function useContextMenu(runtime: FlowRuntime) {
+export function useContextMenu(runtime: FlowRuntime, services: FlowEditorServices) {
   const selectedLabel = computed(() => {
     const target = runtime.contextTarget.value;
 
@@ -29,11 +25,11 @@ export function useContextMenu(runtime: FlowRuntime) {
   );
 
   function getSelectedNodeIds() {
-    return getAction<() => string[]>(runtime, "getSelectedNodeIds")();
+    return services.getSelectedNodeIds();
   }
 
   function selectOnlyNode(nodeId: string) {
-    getAction<(nodeId: string) => void>(runtime, "selectOnlyNode")(nodeId);
+    services.selectOnlyNode(nodeId);
   }
 
   function closeContextMenu() {
@@ -166,14 +162,14 @@ export function useContextMenu(runtime: FlowRuntime) {
     }
 
     if (target.kind === "selection") {
-      getAction<(nodeIds: string[]) => void>(runtime, "deleteNodesById")(target.ids);
+      services.deleteNodesById(target.ids);
       return;
     }
 
     if (target.kind === "edge") {
       const nextEdges = document.data.edges.filter((edge) => edge.id !== target.id);
       runtime.edges.value = nextEdges as FlowEdge[];
-      getAction<(operation: JsonOp[]) => void>(runtime, "submitOperation")([
+      services.submitOperation([
         {
           p: ["edges"],
           od: document.data.edges,
@@ -184,7 +180,7 @@ export function useContextMenu(runtime: FlowRuntime) {
       return;
     }
 
-    getAction<(nodeIds: string[]) => void>(runtime, "deleteNodesById")([target.id]);
+    services.deleteNodesById([target.id]);
   }
 
   function duplicateContextTarget() {
@@ -198,10 +194,7 @@ export function useContextMenu(runtime: FlowRuntime) {
     const suffix = Date.now();
 
     if (target.kind === "selection") {
-      getAction<(nodeIds: string[], count?: number) => void>(runtime, "duplicateNodesById")(
-        target.ids,
-        duplicateCountValue.value
-      );
+      services.duplicateNodesById(target.ids, duplicateCountValue.value);
       return;
     }
 
@@ -221,7 +214,7 @@ export function useContextMenu(runtime: FlowRuntime) {
       );
       const nextEdges = [...document.data.edges, ...duplicateEdges];
       runtime.edges.value = nextEdges as FlowEdge[];
-      getAction<(operation: JsonOp[]) => void>(runtime, "submitOperation")([
+      services.submitOperation([
         {
           p: ["edges"],
           od: document.data.edges,
@@ -232,10 +225,7 @@ export function useContextMenu(runtime: FlowRuntime) {
       return;
     }
 
-    getAction<(nodeIds: string[], count?: number) => void>(runtime, "duplicateNodesById")(
-      [target.id],
-      duplicateCountValue.value
-    );
+    services.duplicateNodesById([target.id], duplicateCountValue.value);
   }
 
   function handleCanvasContextMenu(event: MouseEvent) {
@@ -246,12 +236,7 @@ export function useContextMenu(runtime: FlowRuntime) {
       return;
     }
 
-    const selectedBounds = getAction<() => DOMRect | {
-      left: number;
-      top: number;
-      right: number;
-      bottom: number;
-    } | null>(runtime, "getSelectedClientBounds")();
+    const selectedBounds = services.getSelectedClientBounds();
 
     if (
       selectedBounds &&
@@ -272,9 +257,7 @@ export function useContextMenu(runtime: FlowRuntime) {
       return;
     }
 
-    if (getAction<(target: EventTarget | null) => boolean>(runtime, "isCanvasSelectionTarget")(
-      event.target
-    )) {
+    if (services.isCanvasSelectionTarget(event.target)) {
       closeContextMenu();
     }
   }

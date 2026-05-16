@@ -1,0 +1,226 @@
+﻿.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.topbar {
+  height: 58px;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 18px;
+  padding: 0 18px;
+  border-bottom: 1px solid #dbe2ea;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.brand,
+.metrics {
+  display: flex;
+  align-items: center;
+}
+
+.create-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.login-tools,
+.presence-tools {
+  height: 36px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+.login-tools {
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.login-input {
+  flex: 0 0 auto;
+  width: 132px;
+  height: 34px;
+  border: 1px solid #c7d1dc;
+  border-radius: 7px;
+  color: #17212b;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  outline: none;
+  padding: 0 9px;
+}
+
+.password-input {
+  width: 118px;
+}
+
+.auth-message {
+  max-width: 220px;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.login-input:focus {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 2px rgb(15 118 110 / 14%);
+}
+
+.login-button {
+  flex: 0 0 auto;
+  height: 34px;
+  border: 1px solid #0f766e;
+  border-radius: 7px;
+  background: #0f766e;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.presence-tools {
+  min-width: 160px;
+  gap: 10px;
+}
+
+.user-chip {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -7px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  box-shadow: 0 4px 12px rgb(22 33 43 / 18%);
+}
+
+.user-chip:first-child {
+  margin-left: 0;
+}
+
+.logout-button {
+  flex: 0 0 auto;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #c7d1dc;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #465668;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.logout-button:hover {
+  border-color: #b42318;
+  color: #b42318;
+}
+
+.create-button {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #c7d1dc;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #17212b;
+  cursor: grab;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.create-button:active {
+  cursor: grabbing;
+}
+
+.create-button:hover,
+.create-button.active {
+  border-color: #0f766e;
+  background: #eef7f5;
+  color: #0f766e;
+}
+
+.brand {
+  min-width: 0;
+  gap: 10px;
+  font-weight: 800;
+}
+
+.brand > span:first-of-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-pill {
+  flex: 0 0 auto;
+  min-width: 72px;
+  padding: 4px 10px;
+  border: 1px solid #9fd3c7;
+  border-radius: 999px;
+  background: #e6f6f1;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.status-pill.error {
+  border-color: #f4a7a7;
+  background: #fff0f0;
+  color: #b42318;
+}
+
+.metrics {
+  gap: 12px;
+  color: #5d6978;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.workspace {
+  min-height: 0;
+  display: grid;
+}
+
+.canvas-panel {
+  position: relative;
+  min-width: 0;
+  min-height: calc(100vh - 58px);
+  background: #eef3f8;
+  overflow: hidden;
+}
+
+.flow-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.canvas-panel.selection-hover,
+.canvas-panel.selection-hover .flow-canvas,
+.canvas-panel.selection-hover .vue-flow__pane {
+  cursor: move;
+}
+

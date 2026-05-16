@@ -1,15 +1,12 @@
 import { computed } from "vue";
 import type { SyncPresenceDocument, SyncPresenceUser } from "@vue-flow-sync/shared";
-import { loginUser } from "./api";
-import { cloneJson } from "./graph";
-import type { FlowRuntime } from "./flowRuntime";
-import { randomUserColor } from "./flowState";
+import { loginUser } from "../../api";
+import type { FlowEditorServices } from "../../app/flowEditorServices";
+import { cloneJson } from "../../domain/graph";
+import { randomUserColor } from "../../flowState";
+import type { FlowRuntime } from "../../flowRuntime";
 
-function getAction<T extends (...args: never[]) => unknown>(runtime: FlowRuntime, name: string) {
-  return runtime.actions[name] as T;
-}
-
-export function usePresence(runtime: FlowRuntime) {
+export function usePresence(runtime: FlowRuntime, services: FlowEditorServices) {
   let cachedSelectedNodeIdSource: Set<string> | null = null;
   let cachedSelectedNodeIds: string[] = [];
 
@@ -152,7 +149,7 @@ export function usePresence(runtime: FlowRuntime) {
     runtime.userId.value = crypto.randomUUID();
     runtime.userColor.value = randomUserColor();
     runtime.selectedNodeIds.value = new Set();
-    getAction<() => void>(runtime, "closeContextMenu")();
+    services.closeContextMenu();
   }
 
   async function joinPresence() {

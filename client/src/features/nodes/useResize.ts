@@ -8,14 +8,11 @@ import {
   recalculateSectionMembershipInGraph,
   toNodeSizeStyle,
   type ResizeParams
-} from "./graph";
-import type { FlowRuntime } from "./flowRuntime";
+} from "../../domain/graph";
+import type { FlowEditorServices } from "../../app/flowEditorServices";
+import type { FlowRuntime } from "../../flowRuntime";
 
-function getAction<T>(runtime: FlowRuntime, name: string) {
-  return runtime.actions[name] as T;
-}
-
-export function useResize(runtime: FlowRuntime) {
+export function useResize(runtime: FlowRuntime, services: FlowEditorServices) {
   function clampResizeParams(node: SyncNode, params: ResizeParams): ResizeParams {
     const minimumWidth = node.type === "section" ? 360 : getMinimumNodeWidth(node);
     const minimumHeight = node.type === "section" ? 240 : getMinimumNodeHeight(node);
@@ -44,11 +41,6 @@ export function useResize(runtime: FlowRuntime) {
       return;
     }
 
-    const submitGraphReplacement = getAction<(nodes: SyncNode[], edges: SyncEdge[]) => void>(
-      runtime,
-      "submitGraphReplacement"
-    );
-    const submitOperation = getAction<(operation: JsonOp[]) => void>(runtime, "submitOperation");
     const sourceNode = document.data.nodes[nodeIndex];
     const nextParams = clampResizeParams(sourceNode, params);
     const resizedWidth = Math.round(nextParams.width);
@@ -82,7 +74,7 @@ export function useResize(runtime: FlowRuntime) {
         nextEdges,
         document.data.nodes
       );
-      submitGraphReplacement(nextNodes, nextEdges);
+      services.submitGraphReplacement(nextNodes, nextEdges);
       return;
     }
 
@@ -93,7 +85,7 @@ export function useResize(runtime: FlowRuntime) {
       createReplaceOp(["nodes", nodeIndex, "position"], sourceNode.position, resizedPosition)
     ].filter((resizeOperation): resizeOperation is JsonOp => Boolean(resizeOperation));
 
-    submitOperation(operation);
+    services.submitOperation(operation);
   }
 
   function scheduleResizeCommit(nodeId: string, params: ResizeParams) {
@@ -129,23 +121,19 @@ export function useResize(runtime: FlowRuntime) {
 
   function startNodeResize() {
     runtime.isResizingNode.value = true;
-    getAction<() => void>(runtime, "scheduleSelectionBoundsRefresh")();
+    services.scheduleSelectionBoundsRefresh();
   }
 
   function resizeNodePreview(nodeId: string, params: ResizeParams, syncResize = true) {
-    const getSyncNodeById = getAction<(nodeId: string) => SyncNode | undefined>(
-      runtime,
-      "getSyncNodeById"
-    );
     let committedParams: ResizeParams | undefined;
-    const node = getSyncNodeById(nodeId);
+    const node = services.getSyncNodeById(nodeId);
 
     if (node) {
       committedParams = clampResizeParams(node, params);
     }
 
     nextTick(() => {
-      getAction<() => void>(runtime, "scheduleSelectionBoundsRefresh")();
+      services.scheduleSelectionBoundsRefresh();
     });
 
     if (syncResize && committedParams) {
@@ -157,7 +145,7 @@ export function useResize(runtime: FlowRuntime) {
     runtime.isResizingNode.value = false;
 
     flushResizeCommit(nodeId, params);
-    nextTick(getAction<() => void>(runtime, "scheduleSelectionBoundsRefresh"));
+    nextTick(services.scheduleSelectionBoundsRefresh);
   }
 
   function cleanupResize() {

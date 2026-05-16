@@ -12,25 +12,18 @@ import {
   withDefaultEdges,
   type FlowEdge,
   type FlowNode
-} from "./graph";
-import type { FlowRuntime } from "./flowRuntime";
+} from "../../domain/graph";
+import type { FlowEditorServices } from "../../app/flowEditorServices";
+import type { FlowRuntime } from "../../flowRuntime";
 
-function getAction<T>(runtime: FlowRuntime, name: string) {
-  return runtime.actions[name] as T;
-}
-
-export function useRealtimeSync(runtime: FlowRuntime) {
+export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServices) {
   function applyFlowDocument(document: SyncFlowDocument, fit = false) {
     runtime.isApplyingRemote.value = true;
 
     const nextFlow = cloneJson(document);
     const nextNodes = nextFlow.nodes.map(withContentSizedNode).map(stripParentExtent);
-    const withSelectionState = getAction<(nodes: FlowNode[]) => FlowNode[]>(
-      runtime,
-      "withSelectionState"
-    );
 
-    runtime.nodes.value = withSelectionState(nextNodes as FlowNode[]);
+    runtime.nodes.value = services.withSelectionState(nextNodes as FlowNode[]);
     runtime.edges.value = withDefaultEdges(
       nextFlow.edges,
       createGraphCache(nextNodes, nextFlow.edges)
@@ -77,11 +70,7 @@ export function useRealtimeSync(runtime: FlowRuntime) {
 
     const oldNodes = document.data.nodes;
     const oldEdges = document.data.edges;
-    const withSelectionState = getAction<(nodes: FlowNode[]) => FlowNode[]>(
-      runtime,
-      "withSelectionState"
-    );
-    runtime.nodes.value = withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[]);
+    runtime.nodes.value = services.withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[]);
     runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges));
     nextTick(() => {
       runtime.updateNodeInternals?.(nextNodes.map((node) => node.id));
@@ -143,13 +132,8 @@ export function useRealtimeSync(runtime: FlowRuntime) {
   }
 
   function documentMatchesLocal(document: SyncFlowDocument) {
-    const getCurrentSyncNodes = getAction<() => SyncNode[]>(runtime, "getCurrentSyncNodes");
-    const getCurrentSyncEdges = getAction<(nodes?: SyncNode[]) => SyncEdge[]>(
-      runtime,
-      "getCurrentSyncEdges"
-    );
-    const localNodes = getCurrentSyncNodes();
-    const localEdges = getCurrentSyncEdges(localNodes);
+    const localNodes = services.getCurrentSyncNodes();
+    const localEdges = services.getCurrentSyncEdges(localNodes);
 
     return sameJson(document.nodes, localNodes) && sameJson(document.edges, localEdges);
   }

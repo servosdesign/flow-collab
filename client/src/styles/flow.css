@@ -1,0 +1,108 @@
+﻿.vue-flow .vue-flow__edges {
+  z-index: 4 !important;
+}
+
+.vue-flow .vue-flow__node-section {
+  z-index: 1 !important;
+}
+
+.vue-flow .vue-flow__node-section.nested-flow-node {
+  z-index: 3 !important;
+}
+
+.vue-flow .vue-flow__node-item {
+  z-index: 5 !important;
+}
+
+.vue-flow .vue-flow__node.selected {
+  z-index: 14 !important;
+}
+
+.vue-flow .vue-flow__node:has(.sync-node.selected) {
+  z-index: 14 !important;
+}
+
+.vue-flow .vue-flow__node-section:has(.sync-node.selected) {
+  z-index: 1 !important;
+}
+
+.vue-flow .vue-flow__node-section.nested-flow-node:has(.sync-node.selected) {
+  z-index: 3 !important;
+}
+
+.vue-flow .vue-flow__node-item:has(.sync-node.selected) {
+  z-index: 14 !important;
+}
+
+.vue-flow .vue-flow__connectionline {
+  z-index: 7 !important;
+}
+
+.vue-flow__edge-path {
+  stroke: #3f5870;
+  stroke-width: 2;
+}
+
+.vue-flow__connection-path {
+  stroke: #3f5870;
+  stroke-width: 2.5;
+}
+
+.vue-flow__edge-section-through .vue-flow__edge-path,
+.section-through-edge.vue-flow__edge-path {
+  stroke: #2563eb;
+  stroke-width: 2.7;
+}
+
+.connection-preview-edge.vue-flow__edge-path,
+.vue-flow__connection .vue-flow__edge-path,
+.vue-flow__connection-path {
+  stroke: #2563eb;
+  stroke-width: 2.8;
+}
+
+.vue-flow__edge.selected .vue-flow__edge-path,
+.vue-flow__edge:focus .vue-flow__edge-path {
+  stroke: #dc2626;
+  stroke-width: 4;
+  filter: drop-shadow(0 0 4px rgb(220 38 38 / 36%));
+}
+
+.vue-flow__edge.selected .vue-flow__edge-interaction {
+  stroke-width: 28;
+}
+
+.vue-flow__edge.animated path {
+  stroke: #0f766e;
+}
+
+.vue-flow__handle {
+  width: 11px;
+  height: 11px;
+  border: 1px solid #ffffff;
+  background: #0f766e;
+  box-shadow: 0 2px 8px rgb(22 33 43 / 22%);
+}
+
+.vue-flow__selection {
+  display: none;
+}
+
+.vue-flow__nodesselection,
+.vue-flow__nodesselection-rect {
+  display: none;
+}
+
+.vue-flow__minimap {
+  right: 16px;
+  bottom: 16px;
+  border: 1px solid #c7d1dc;
+  border-radius: 8px;
+  box-shadow: 0 14px 36px rgb(22 33 43 / 16%);
+  overflow: hidden;
+}
+
+.vue-flow__minimap svg {
+  background: #ffffff;
+}
+

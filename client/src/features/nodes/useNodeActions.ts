@@ -2,7 +2,7 @@ import type { NodeDragEvent } from "@vue-flow/core";
 import { nextTick } from "vue";
 import type { FlowNodeKind, SyncEdge, SyncNode } from "@vue-flow-sync/shared";
 import type { JsonOp } from "sharedb/lib/client";
-import { uploadNodeImage } from "./api";
+import { uploadNodeImage } from "../../api";
 import {
   applySectionMembershipForMovedNode,
   createGraphCache,
@@ -18,10 +18,11 @@ import {
   toNodeSizeStyle,
   withContentSizedNode,
   withDefaultEdges,
-  type FlowEdge,
   type FlowNode
-} from "./graph";
-import type { FlowRuntime } from "./flowRuntime";
+} from "../../domain/graph";
+import type { FlowEditorServices } from "../../app/flowEditorServices";
+import type { FlowRuntime } from "../../flowRuntime";
+import { useNodeClipboard } from "./useNodeClipboard";
 
 const portColors = [
   "#0f766e",
@@ -38,50 +39,43 @@ function randomPortColor() {
   return portColors[Math.floor(Math.random() * portColors.length)];
 }
 
-function getAction<T>(runtime: FlowRuntime, name: string) {
-  return runtime.actions[name] as T;
-}
+export function useNodeActions(runtime: FlowRuntime, services: FlowEditorServices) {
+  const clipboard = useNodeClipboard(runtime, services);
 
-export function useNodeActions(runtime: FlowRuntime) {
   function submitOperation(operation: JsonOp[]) {
-    getAction<(operation: JsonOp[]) => void>(runtime, "submitOperation")(operation);
+    services.submitOperation(operation);
   }
 
   function submitGraphReplacement(nextNodes: SyncNode[], nextEdges: SyncEdge[]) {
-    getAction<(nodes: SyncNode[], edges: SyncEdge[]) => void>(
-      runtime,
-      "submitGraphReplacement"
-    )(nextNodes, nextEdges);
+    services.submitGraphReplacement(nextNodes, nextEdges);
   }
 
   function getCurrentSyncNodes() {
-    return getAction<() => SyncNode[]>(runtime, "getCurrentSyncNodes")();
+    return services.getCurrentSyncNodes();
   }
 
   function getCurrentSyncEdges(nextNodes?: SyncNode[]) {
-    return getAction<(nodes?: SyncNode[]) => SyncEdge[]>(runtime, "getCurrentSyncEdges")(
-      nextNodes
-    );
+    return services.getCurrentSyncEdges(nextNodes);
   }
 
   function withSelectionState(nodes: FlowNode[]) {
-    return getAction<(nodes: FlowNode[]) => FlowNode[]>(runtime, "withSelectionState")(nodes);
+    return services.withSelectionState(nodes);
   }
 
   function closeContextMenu() {
-    getAction<() => void>(runtime, "closeContextMenu")();
+    services.closeContextMenu();
   }
 
   function scheduleSelectionBoundsRefresh() {
-    getAction<() => void>(runtime, "scheduleSelectionBoundsRefresh")();
+    services.scheduleSelectionBoundsRefresh();
   }
 
   function updatePresenceSelection() {
-    getAction<() => void>(runtime, "updatePresenceSelection")();
+    services.updatePresenceSelection();
   }
 
   function submitGraphSnapshot() {
-    getAction<() => void>(runtime, "submitGraphSnapshot")();
+    services.submitGraphSnapshot();
   }
 
   function refreshNodeInternalsSoon(nodeIds: string[]) {
@@ -203,129 +197,6 @@ export function useNodeActions(runtime: FlowRuntime) {
       scheduleSelectionBoundsRefresh();
       updatePresenceSelection();
     });
-  }
-
-  function deleteNodesById(nodeIds: string[]) {
-    const document = runtime.flowDocument.value;
-
-    if (!document || nodeIds.length === 0) {
-      return;
-    }
-
-    const removedIds = new Set(nodeIds);
-
-    document.data.nodes.forEach((node) => {
-      if (node.parentNode && removedIds.has(node.parentNode)) {
-        removedIds.add(node.id);
-      }
-    });
-
-    const nextNodes = document.data.nodes.filter((node) => !removedIds.has(node.id));
-    const nextEdges = document.data.edges.filter(
-      (edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target)
-    );
-    runtime.selectedNodeIds.value = new Set(
-      Array.from(runtime.selectedNodeIds.value).filter((nodeId) => !removedIds.has(nodeId))
-    );
-
-    runtime.nodes.value = withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[]);
-    runtime.edges.value = nextEdges as FlowEdge[];
-    submitOperation([
-      {
-        p: ["nodes"],
-        od: document.data.nodes,
-        oi: nextNodes
-      },
-      {
-        p: ["edges"],
-        od: document.data.edges,
-        oi: nextEdges
-      }
-    ]);
-    closeContextMenu();
-  }
-
-  function duplicateNodesById(nodeIds: string[], count = 1) {
-    const document = runtime.flowDocument.value;
-
-    if (!document || nodeIds.length === 0) {
-      return;
-    }
-
-    const selectedIds = new Set(nodeIds);
-    const nodesToDuplicate = document.data.nodes.filter((node) => selectedIds.has(node.id));
-
-    if (nodesToDuplicate.length === 0) {
-      return;
-    }
-
-    const copyCount = Math.max(1, Math.min(20, Math.floor(Number(count) || 1)));
-    const duplicatedNodes: SyncNode[] = [];
-    const duplicatedEdges: SyncEdge[] = [];
-    const internalEdges = document.data.edges.filter(
-      (edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target)
-    );
-
-    for (let copyIndex = 0; copyIndex < copyCount; copyIndex += 1) {
-      const suffix = `${Date.now()}-${copyIndex + 1}`;
-      const offset = 32 * (copyIndex + 1);
-      const idMap = new Map<string, string>();
-
-      nodesToDuplicate.forEach((node) => {
-        idMap.set(node.id, `${node.id}-copy-${suffix}`);
-      });
-
-      nodesToDuplicate.forEach((node) => {
-        const duplicate: SyncNode = {
-          ...node,
-          id: idMap.get(node.id) ?? `${node.id}-copy-${suffix}`,
-          position: {
-            x: node.position.x + offset,
-            y: node.position.y + offset
-          },
-          data: {
-            ...node.data,
-            title: `${node.data.title ?? node.data.text ?? node.id} copy`,
-            body: node.data.body ?? ""
-          },
-          style: node.style ? { ...node.style } : undefined
-        };
-
-        if (node.parentNode && idMap.has(node.parentNode)) {
-          duplicate.parentNode = idMap.get(node.parentNode);
-        }
-
-        duplicatedNodes.push(duplicate);
-      });
-
-      internalEdges.forEach((edge) => {
-        duplicatedEdges.push({
-          ...edge,
-          id: `${edge.id}-copy-${suffix}`,
-          source: idMap.get(edge.source) ?? edge.source,
-          target: idMap.get(edge.target) ?? edge.target
-        });
-      });
-    }
-
-    const nextNodes = [...document.data.nodes, ...duplicatedNodes];
-    const nextEdges = [...document.data.edges, ...duplicatedEdges];
-
-    runtime.nodes.value = withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[]);
-    runtime.edges.value = nextEdges as FlowEdge[];
-    submitOperation([
-      {
-        p: ["nodes"],
-        od: document.data.nodes,
-        oi: nextNodes
-      },
-      {
-        p: ["edges"],
-        od: document.data.edges,
-        oi: nextEdges
-      }
-    ]);
-    closeContextMenu();
   }
 
   function addNodePort(nodeId: string) {
@@ -655,8 +526,8 @@ export function useNodeActions(runtime: FlowRuntime) {
 
   return {
     addNodePort,
-    deleteNodesById,
-    duplicateNodesById,
+    deleteNodesById: clipboard.deleteNodesById,
+    duplicateNodesById: clipboard.duplicateNodesById,
     handleCreateDragStart,
     handleCreateDrop,
     handleNodeDrag,

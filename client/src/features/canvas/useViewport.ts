@@ -1,4 +1,4 @@
-import type { FlowRuntime } from "./flowRuntime";
+import type { FlowRuntime } from "../../flowRuntime";
 
 type ViewportLike = { x: number; y: number; zoom: number };
 type MovePayload = { flowTransform?: ViewportLike } | ViewportLike;
