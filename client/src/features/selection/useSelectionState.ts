@@ -54,9 +54,7 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
   }
 
   const setSelectedNodes = (nodeIds: string[]) => {
-    if (nodeIds.length > 0) {
-      clearEdgeSelection()
-    }
+    clearEdgeSelection()
 
     if (areSelectionIdsEqual(runtime.selectedNodeIds.value, nodeIds)) {
       return
