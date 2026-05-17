@@ -1,4 +1,4 @@
-import { Schema, model } from "mongoose";
+import { Schema, model } from 'mongoose'
 
 const userSchema = new Schema(
   {
@@ -32,17 +32,17 @@ const userSchema = new Schema(
     timestamps: true,
     versionKey: false
   }
-);
+)
 
-userSchema.set("toJSON", {
+userSchema.set('toJSON', {
   transform(_document, ret) {
-    const json = ret as Record<string, unknown>;
-    json.id = String(json._id);
-    delete json._id;
-    delete json.passwordHash;
-    delete json.passwordSalt;
-    return ret;
+    const json = ret as Record<string, unknown>
+    json.id = String(json._id)
+    delete json._id
+    delete json.passwordHash
+    delete json.passwordSalt
+    return ret
   }
-});
+})
 
-export const UserModel = model("User", userSchema);
+export const UserModel = model('User', userSchema)

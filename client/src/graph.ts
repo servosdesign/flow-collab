@@ -1,1 +1,1 @@
-export * from "./domain/graph";
+export * from './domain/graph'

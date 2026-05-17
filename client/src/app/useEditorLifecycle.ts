@@ -1,25 +1,25 @@
-import { nextTick, onBeforeUnmount, onMounted } from "vue";
-import type { JsonOp } from "sharedb/lib/client";
-import { connectFlowDocument } from "../realtime";
-import type { FlowAppState } from "../flowTypes";
-import type { useViewport } from "../features/canvas/useViewport";
-import type { useNodeActions } from "../features/nodes/useNodeActions";
-import type { usePresence } from "../features/presence/usePresence";
-import type { useRealtimeSync } from "../features/realtime/useRealtimeSync";
-import type { useResize } from "../features/nodes/useResize";
-import type { useSelection } from "../features/selection/useSelection";
+import { nextTick, onBeforeUnmount, onMounted } from 'vue'
+import type { JsonOp } from 'sharedb/lib/client'
+import { connectFlowDocument } from '../realtime'
+import type { FlowAppState } from '../flowTypes'
+import type { useViewport } from '../features/canvas/useViewport'
+import type { useNodeActions } from '../features/nodes/useNodeActions'
+import type { usePresence } from '../features/presence/usePresence'
+import type { useRealtimeSync } from '../features/realtime/useRealtimeSync'
+import type { useResize } from '../features/nodes/useResize'
+import type { useSelection } from '../features/selection/useSelection'
 
 type EditorLifecycleOptions = {
-  nodeActions: ReturnType<typeof useNodeActions>;
-  presence: ReturnType<typeof usePresence>;
-  realtime: ReturnType<typeof useRealtimeSync>;
-  resize: ReturnType<typeof useResize>;
-  selection: ReturnType<typeof useSelection>;
-  state: FlowAppState;
-  viewport: ReturnType<typeof useViewport>;
-};
+  nodeActions: ReturnType<typeof useNodeActions>
+  presence: ReturnType<typeof usePresence>
+  realtime: ReturnType<typeof useRealtimeSync>
+  resize: ReturnType<typeof useResize>
+  selection: ReturnType<typeof useSelection>
+  state: FlowAppState
+  viewport: ReturnType<typeof useViewport>
+}
 
-export function useEditorLifecycle({
+export const useEditorLifecycle = ({
   nodeActions,
   presence,
   realtime,
@@ -27,40 +27,40 @@ export function useEditorLifecycle({
   selection,
   state,
   viewport
-}: EditorLifecycleOptions) {
+}: EditorLifecycleOptions) => {
   const {
     errorMessage,
     flowDocument,
     isLoggedIn,
     presenceDocument,
     status
-  } = state;
+  } = state
 
   onMounted(() => {
-    window.addEventListener("keydown", selection.handleKeyDown);
-    window.addEventListener("beforeunload", presence.removePresenceUser);
-    window.addEventListener("resize", viewport.updateCanvasSize);
-    nextTick(viewport.updateCanvasSize);
+    window.addEventListener('keydown', selection.handleKeyDown)
+    window.addEventListener('beforeunload', presence.removePresenceUser)
+    window.addEventListener('resize', viewport.updateCanvasSize)
+    nextTick(viewport.updateCanvasSize)
 
-    const realtimeConnection = connectFlowDocument();
-    flowDocument.value = realtimeConnection.document;
-    presenceDocument.value = realtimeConnection.presenceDocument;
-    state.closeRealtime.value = realtimeConnection.close;
+    const realtimeConnection = connectFlowDocument()
+    flowDocument.value = realtimeConnection.document
+    presenceDocument.value = realtimeConnection.presenceDocument
+    state.closeRealtime.value = realtimeConnection.close
 
     realtimeConnection.document.subscribe((error?: Error) => {
       if (error) {
-        errorMessage.value = error.message;
-        status.value = "Error";
-        return;
+        errorMessage.value = error.message
+        status.value = 'Error'
+        return
       }
 
-      realtime.applyFlowDocument(realtimeConnection.document.data, true);
-      status.value = "Live";
-      nextTick(nodeActions.sanitizeSectionMembership);
+      realtime.applyFlowDocument(realtimeConnection.document.data, true)
+      status.value = 'Live'
+      nextTick(nodeActions.sanitizeSectionMembership)
 
-      realtimeConnection.document.on("op", (operation, source) => {
+      realtimeConnection.document.on('op', (operation, source) => {
         if (source === state.localSource) {
-          return;
+          return
         }
 
         if (
@@ -69,46 +69,46 @@ export function useEditorLifecycle({
             realtimeConnection.document.data
           )
         ) {
-          status.value = "Live";
-          return;
+          status.value = 'Live'
+          return
         }
 
         if (realtime.documentMatchesLocal(realtimeConnection.document.data)) {
-          return;
+          return
         }
 
-        realtime.applyFlowDocument(realtimeConnection.document.data);
-        status.value = "Live";
-      });
-    });
+        realtime.applyFlowDocument(realtimeConnection.document.data)
+        status.value = 'Live'
+      })
+    })
 
     realtimeConnection.presenceDocument.subscribe((error?: Error) => {
       if (error) {
-        errorMessage.value = error.message;
-        status.value = "Error";
-        return;
+        errorMessage.value = error.message
+        status.value = 'Error'
+        return
       }
 
-      presence.applyPresenceDocument(realtimeConnection.presenceDocument.data);
+      presence.applyPresenceDocument(realtimeConnection.presenceDocument.data)
       if (isLoggedIn.value) {
-        presence.submitPresenceUser(presence.getLocalPresenceUser());
+        presence.submitPresenceUser(presence.getLocalPresenceUser())
       }
 
-      realtimeConnection.presenceDocument.on("op", () => {
-        presence.applyPresenceDocument(realtimeConnection.presenceDocument.data);
-      });
-    });
-  });
+      realtimeConnection.presenceDocument.on('op', () => {
+        presence.applyPresenceDocument(realtimeConnection.presenceDocument.data)
+      })
+    })
+  })
 
   onBeforeUnmount(() => {
-    window.removeEventListener("keydown", selection.handleKeyDown);
-    window.removeEventListener("beforeunload", presence.removePresenceUser);
-    window.removeEventListener("resize", viewport.updateCanvasSize);
-    selection.cleanupSelection();
-    viewport.cleanupViewport();
-    realtime.cleanupRealtimeSync();
-    resize.cleanupResize();
-    presence.cleanupPresence();
-    state.closeRealtime.value?.();
-  });
+    window.removeEventListener('keydown', selection.handleKeyDown)
+    window.removeEventListener('beforeunload', presence.removePresenceUser)
+    window.removeEventListener('resize', viewport.updateCanvasSize)
+    selection.cleanupSelection()
+    viewport.cleanupViewport()
+    realtime.cleanupRealtimeSync()
+    resize.cleanupResize()
+    presence.cleanupPresence()
+    state.closeRealtime.value?.()
+  })
 }

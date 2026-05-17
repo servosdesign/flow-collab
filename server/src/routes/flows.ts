@@ -1,28 +1,28 @@
-import type { FlowPayload } from "@vue-flow-sync/shared";
-import { Router } from "express";
-import { FlowModel } from "../models/Flow.js";
+import type { FlowPayload } from '@vue-flow-sync/shared'
+import { Router } from 'express'
+import { FlowModel } from '../models/Flow.js'
 
-const router = Router();
+const router = Router()
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function parseFlowPayload(value: unknown): FlowPayload {
+const parseFlowPayload = (value: unknown): FlowPayload => {
   if (!isRecord(value)) {
-    throw new Error("Request body must be an object.");
+    throw new Error('Request body must be an object.')
   }
 
-  if (typeof value.name !== "string" || value.name.trim().length === 0) {
-    throw new Error("Flow name is required.");
+  if (typeof value.name !== 'string' || value.name.trim().length === 0) {
+    throw new Error('Flow name is required.')
   }
 
   if (!Array.isArray(value.nodes)) {
-    throw new Error("Flow nodes must be an array.");
+    throw new Error('Flow nodes must be an array.')
   }
 
   if (!Array.isArray(value.edges)) {
-    throw new Error("Flow edges must be an array.");
+    throw new Error('Flow edges must be an array.')
   }
 
   return {
@@ -31,38 +31,38 @@ function parseFlowPayload(value: unknown): FlowPayload {
     edges: value.edges,
     viewport: isRecord(value.viewport)
       ? {
-          x: Number(value.viewport.x ?? 0),
-          y: Number(value.viewport.y ?? 0),
-          zoom: Number(value.viewport.zoom ?? 1)
-        }
+        x: Number(value.viewport.x ?? 0),
+        y: Number(value.viewport.y ?? 0),
+        zoom: Number(value.viewport.zoom ?? 1)
+      }
       : {
-          x: 0,
-          y: 0,
-          zoom: 1
-        }
-  };
+        x: 0,
+        y: 0,
+        zoom: 1
+      }
+  }
 }
 
-router.get("/:slug", async (req, res, next) => {
+router.get('/:slug', async (req, res, next) => {
   try {
     const flow = await FlowModel.findOne({ slug: req.params.slug })
-      .select("-_id")
-      .lean();
+      .select('-_id')
+      .lean()
 
     if (!flow) {
-      res.status(404).json({ message: "Flow not found." });
-      return;
+      res.status(404).json({ message: 'Flow not found.' })
+      return
     }
 
-    res.json(flow);
+    res.json(flow)
   } catch (error) {
-    next(error);
+    next(error)
   }
-});
+})
 
-router.put("/:slug", async (req, res, next) => {
+router.put('/:slug', async (req, res, next) => {
   try {
-    const payload = parseFlowPayload(req.body);
+    const payload = parseFlowPayload(req.body)
     const flow = await FlowModel.findOneAndUpdate(
       { slug: req.params.slug },
       {
@@ -74,13 +74,13 @@ router.put("/:slug", async (req, res, next) => {
         upsert: true
       }
     )
-      .select("-_id")
-      .lean();
+      .select('-_id')
+      .lean()
 
-    res.json(flow);
+    res.json(flow)
   } catch (error) {
-    next(error);
+    next(error)
   }
-});
+})
 
-export const flowsRouter = router;
+export const flowsRouter = router

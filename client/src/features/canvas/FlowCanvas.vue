@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { useCanvasSurfaceContext } from "../../app/flowEditorContext";
-import FlowContextMenu from "../context-menu/FlowContextMenu.vue";
-import RemoteCursorLayer from "../presence/RemoteCursorLayer.vue";
-import SelectionOverlay from "../selection/SelectionOverlay.vue";
-import CanvasOverlays from "./CanvasOverlays.vue";
-import FlowGraph from "./FlowGraph.vue";
+import { useCanvasSurfaceContext } from '../../app/flowEditorContext'
+import FlowContextMenu from '../context-menu/FlowContextMenu.vue'
+import RemoteCursorLayer from '../presence/RemoteCursorLayer.vue'
+import SelectionOverlay from '../selection/SelectionOverlay.vue'
+import CanvasOverlays from './CanvasOverlays.vue'
+import FlowGraph from './FlowGraph.vue'
 
 const {
   canvasPanel,
@@ -14,7 +14,7 @@ const {
   handleCanvasPointerMove,
   isHoveringSelection,
   isMovingSelection
-} = useCanvasSurfaceContext();
+} = useCanvasSurfaceContext()
 </script>
 
 <template>

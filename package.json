@@ -8,16 +8,26 @@
     "server",
     "shared"
   ],
+  "overrides": {
+    "@typescript-eslint/parser": "8.46.4",
+    "@typescript-eslint/visitor-keys": "8.46.4"
+  },
   "scripts": {
     "dev": "npm run build -w shared && concurrently -k -n shared,server,client -c yellow,cyan,magenta \"npm run dev -w shared\" \"npm run dev -w server\" \"npm run dev -w client\"",
     "dev:client": "npm run dev -w client",
     "dev:server": "npm run dev -w server",
     "build": "npm run build -w shared && npm run build -w server && npm run build -w client",
     "typecheck": "npm run build -w shared && npm run typecheck -w server && npm run typecheck -w client",
+    "lint": "npm run lint -w client && npm run lint -w server && npm run lint -w shared",
+    "lint:fix": "npm run lint:fix -w client && npm run lint:fix -w server && npm run lint:fix -w shared",
+    "lint:client": "npm run lint -w client",
+    "lint:server": "npm run lint -w server",
+    "lint:shared": "npm run lint -w shared",
     "docker:up": "docker-compose up -d mongo",
     "docker:down": "docker-compose down"
   },
   "devDependencies": {
+    "@typescript-eslint/parser": "8.46.4",
     "concurrently": "^9.1.2",
     "typescript": "^5.7.3"
   }

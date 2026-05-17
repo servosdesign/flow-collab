@@ -4,17 +4,17 @@ import {
   ConnectionMode,
   MarkerType,
   VueFlow
-} from "@vue-flow/core";
-import "@vue-flow/core/dist/style.css";
-import "@vue-flow/core/dist/theme-default.css";
-import { useFlowGraphContext } from "../../app/flowEditorContext";
-import ConnectionPreviewLine from "../edges/ConnectionPreviewLine.vue";
-import FlowGridBackground from "./FlowGridBackground.vue";
-import FlowItemNodeSlot from "./FlowItemNodeSlot.vue";
-import FlowMiniMap from "./FlowMiniMap.vue";
-import FlowSectionNodeSlot from "./FlowSectionNodeSlot.vue";
+} from '@vue-flow/core'
+import '@vue-flow/core/dist/style.css'
+import '@vue-flow/core/dist/theme-default.css'
+import { useFlowGraphContext } from '../../app/flowEditorContext'
+import ConnectionPreviewLine from '../edges/ConnectionPreviewLine.vue'
+import FlowGridBackground from './FlowGridBackground.vue'
+import FlowItemNodeSlot from './FlowItemNodeSlot.vue'
+import FlowMiniMap from './FlowMiniMap.vue'
+import FlowSectionNodeSlot from './FlowSectionNodeSlot.vue'
 
-const nodeSnapGrid: [number, number] = [1, 1];
+const nodeSnapGrid: [number, number] = [1, 1]
 
 const {
   edges,
@@ -23,7 +23,7 @@ const {
   isLoggedIn,
   isValidSectionConnection,
   nodes
-} = useFlowGraphContext();
+} = useFlowGraphContext()
 </script>
 
 <template>
@@ -83,11 +83,17 @@ const {
     </template>
 
     <template #node-section="{ id, data }">
-      <FlowSectionNodeSlot :id="id" :data="data" />
+      <FlowSectionNodeSlot
+        :id="id"
+        :data="data"
+      />
     </template>
 
     <template #node-item="{ id, data }">
-      <FlowItemNodeSlot :id="id" :data="data" />
+      <FlowItemNodeSlot
+        :id="id"
+        :data="data"
+      />
     </template>
 
     <FlowGridBackground />

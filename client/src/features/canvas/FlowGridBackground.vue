@@ -1,5 +1,8 @@
 <template>
-  <div class="flow-grid-background" aria-hidden="true"></div>
+  <div
+    class="flow-grid-background"
+    aria-hidden="true"
+  />
 </template>
 
 <style scoped>

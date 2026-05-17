@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { usePresenceCursorContext } from "../../app/flowEditorContext";
+import { usePresenceCursorContext } from '../../app/flowEditorContext'
 
-const { currentViewport, getCursorStyle, remoteCursors } = usePresenceCursorContext();
+const { currentViewport, getCursorStyle, remoteCursors } = usePresenceCursorContext()
 </script>
 
 <template>
@@ -21,7 +21,7 @@ const { currentViewport, getCursorStyle, remoteCursors } = usePresenceCursorCont
     class="remote-cursor"
     :style="getCursorStyle(user)"
   >
-    <span class="cursor-pointer"></span>
+    <span class="cursor-pointer" />
     <span class="cursor-label">{{ user.name }}</span>
   </div>
 </template>

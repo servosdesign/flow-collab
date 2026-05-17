@@ -1,32 +1,32 @@
-import type { SyncPresenceUser } from "@vue-flow-sync/shared";
-import { computed, type Component } from "vue";
-import type { FlowNode } from "../domain/graph";
-import type { useGraphState } from "../domain/graph/useGraphState";
-import type { useViewport } from "../features/canvas/useViewport";
-import type { useContextMenu } from "../features/context-menu/useContextMenu";
-import type { useConnections } from "../features/edges/useConnections";
-import type { useNodeActions } from "../features/nodes/useNodeActions";
-import type { useResize } from "../features/nodes/useResize";
-import type { usePresence } from "../features/presence/usePresence";
-import type { useRealtimeSync } from "../features/realtime/useRealtimeSync";
-import type { useSelection } from "../features/selection/useSelection";
-import type { FlowAppState } from "../flowTypes";
+import type { SyncPresenceUser } from '@vue-flow-sync/shared'
+import { computed, type Component } from 'vue'
+import type { FlowNode } from '../domain/graph'
+import type { useGraphState } from '../domain/graph/useGraphState'
+import type { useViewport } from '../features/canvas/useViewport'
+import type { useContextMenu } from '../features/context-menu/useContextMenu'
+import type { useConnections } from '../features/edges/useConnections'
+import type { useNodeActions } from '../features/nodes/useNodeActions'
+import type { useResize } from '../features/nodes/useResize'
+import type { usePresence } from '../features/presence/usePresence'
+import type { useRealtimeSync } from '../features/realtime/useRealtimeSync'
+import type { useSelection } from '../features/selection/useSelection'
+import type { FlowAppState } from '../flowTypes'
 
 type EditorViewModelOptions = {
-  connections: ReturnType<typeof useConnections>;
-  contextMenu: ReturnType<typeof useContextMenu>;
-  edgeTypes: Record<string, Component>;
-  graphState: ReturnType<typeof useGraphState>;
-  nodeActions: ReturnType<typeof useNodeActions>;
-  presence: ReturnType<typeof usePresence>;
-  realtime: ReturnType<typeof useRealtimeSync>;
-  resize: ReturnType<typeof useResize>;
-  selection: ReturnType<typeof useSelection>;
-  state: FlowAppState;
-  viewport: ReturnType<typeof useViewport>;
-};
+  connections: ReturnType<typeof useConnections>
+  contextMenu: ReturnType<typeof useContextMenu>
+  edgeTypes: Record<string, Component>
+  graphState: ReturnType<typeof useGraphState>
+  nodeActions: ReturnType<typeof useNodeActions>
+  presence: ReturnType<typeof usePresence>
+  realtime: ReturnType<typeof useRealtimeSync>
+  resize: ReturnType<typeof useResize>
+  selection: ReturnType<typeof useSelection>
+  state: FlowAppState
+  viewport: ReturnType<typeof useViewport>
+}
 
-export function useEditorViewModels({
+export const useEditorViewModels = ({
   connections,
   contextMenu,
   edgeTypes,
@@ -38,7 +38,7 @@ export function useEditorViewModels({
   selection,
   state,
   viewport
-}: EditorViewModelOptions) {
+}: EditorViewModelOptions) => {
   const {
     authMessage,
     canvasPanel,
@@ -59,13 +59,13 @@ export function useEditorViewModels({
     selectedNodeIds,
     status,
     userId
-  } = state;
-  const nodeCount = computed(() => nodes.value.length);
-  const edgeCount = computed(() => edges.value.length);
-  const hasError = computed(() => errorMessage.value.length > 0);
-  const emptySelectedUsers: SyncPresenceUser[] = [];
-  let selectedUsersSignature = "";
-  let cachedSelectedUsersByNodeId = new Map<string, SyncPresenceUser[]>();
+  } = state
+  const nodeCount = computed(() => nodes.value.length)
+  const edgeCount = computed(() => edges.value.length)
+  const hasError = computed(() => errorMessage.value.length > 0)
+  const emptySelectedUsers: SyncPresenceUser[] = []
+  let selectedUsersSignature = ''
+  let cachedSelectedUsersByNodeId = new Map<string, SyncPresenceUser[]>()
 
   const selectedUsersByNodeId = computed(() => {
     const signature = presence.visibleCollaborators.value
@@ -74,99 +74,99 @@ export function useEditorViewModels({
           user.id,
           user.name,
           user.color,
-          user.selectedNodeIds?.join(",") ?? ""
-        ].join("\u0001")
+          user.selectedNodeIds?.join(',') ?? ''
+        ].join('\u0001')
       )
-      .join("\u0002");
+      .join('\u0002')
 
     if (signature === selectedUsersSignature) {
-      return cachedSelectedUsersByNodeId;
+      return cachedSelectedUsersByNodeId
     }
 
-    const byNodeId = new Map<string, SyncPresenceUser[]>();
+    const byNodeId = new Map<string, SyncPresenceUser[]>()
 
     presence.visibleCollaborators.value.forEach((user) => {
       if (user.id === userId.value) {
-        return;
+        return
       }
 
       user.selectedNodeIds?.forEach((nodeId) => {
-        const selectedUsers = byNodeId.get(nodeId);
+        const selectedUsers = byNodeId.get(nodeId)
 
         if (selectedUsers) {
-          selectedUsers.push(user);
-          return;
+          selectedUsers.push(user)
+          return
         }
 
-        byNodeId.set(nodeId, [user]);
-      });
-    });
+        byNodeId.set(nodeId, [user])
+      })
+    })
 
-    selectedUsersSignature = signature;
-    cachedSelectedUsersByNodeId = byNodeId;
+    selectedUsersSignature = signature
+    cachedSelectedUsersByNodeId = byNodeId
 
-    return cachedSelectedUsersByNodeId;
-  });
+    return cachedSelectedUsersByNodeId
+  })
 
-  function userInitials(name: string) {
+  const userInitials = (name: string) => {
     return name
       .trim()
       .split(/\s+/)
       .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? "")
-      .join("");
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('')
   }
 
-  function getSelectedUsersForNode(nodeId: string) {
-    return selectedUsersByNodeId.value.get(nodeId) ?? emptySelectedUsers;
+  const getSelectedUsersForNode = (nodeId: string) => {
+    return selectedUsersByNodeId.value.get(nodeId) ?? emptySelectedUsers
   }
 
-  function isMiniMapNodeSelected(node: { id?: string; selected?: boolean }) {
-    return Boolean((node.id && selectedNodeIds.value.has(node.id)) || node.selected);
+  const isMiniMapNodeSelected = (node: { id?: string, selected?: boolean }) => {
+    return Boolean((node.id && selectedNodeIds.value.has(node.id)) || node.selected)
   }
 
-  function getMiniMapNodeColor(node: { id?: string; type?: string; selected?: boolean }) {
+  const getMiniMapNodeColor = (node: { id?: string, type?: string, selected?: boolean }) => {
     if (isMiniMapNodeSelected(node)) {
-      return "#dbeafe";
+      return '#dbeafe'
     }
 
-    return node.type === "section" ? "#d1fae5" : "#f8fafc";
+    return node.type === 'section' ? '#d1fae5' : '#f8fafc'
   }
 
-  function getMiniMapNodeStroke(node: { id?: string; type?: string; selected?: boolean }) {
+  const getMiniMapNodeStroke = (node: { id?: string, type?: string, selected?: boolean }) => {
     if (isMiniMapNodeSelected(node)) {
-      return "#1a73e8";
+      return '#1a73e8'
     }
 
-    return node.type === "section" ? "#0f766e" : "#94a3b8";
+    return node.type === 'section' ? '#0f766e' : '#94a3b8'
   }
 
-  function shouldShowNodeResizer(nodeId: string) {
+  const shouldShowNodeResizer = (nodeId: string) => {
     return (
       !isLassoSelecting.value &&
       selection.isSingleNodeSelection.value &&
       selection.isNodeSelected(nodeId)
-    );
+    )
   }
 
-  function getNodeResizerZoom(nodeId: string) {
+  const getNodeResizerZoom = (nodeId: string) => {
     if (!shouldShowNodeResizer(nodeId)) {
-      return undefined;
+      return undefined
     }
 
-    return currentViewport.value.zoom;
+    return currentViewport.value.zoom
   }
 
-  function handleViewportMoveEnd(payload?: Parameters<typeof viewport.handleViewportMove>[0]) {
-    viewport.handleViewportMove(payload);
-    realtime.scheduleGraphSnapshot(500);
+  const handleViewportMoveEnd = (payload?: Parameters<typeof viewport.handleViewportMove>[0]) => {
+    viewport.handleViewportMove(payload)
+    realtime.scheduleGraphSnapshot(500)
   }
 
-  function handleNodeDragStop(payload: Parameters<typeof nodeActions.handleNodeDragStop>[0]) {
+  const handleNodeDragStop = (payload: Parameters<typeof nodeActions.handleNodeDragStop>[0]) => {
     try {
-      nodeActions.handleNodeDragStop(payload);
+      nodeActions.handleNodeDragStop(payload)
     } finally {
-      selection.handleNodeDragStop();
+      selection.handleNodeDragStop()
     }
   }
 
@@ -274,5 +274,5 @@ export function useEditorViewModels({
       userInitials,
       visibleCollaborators: presence.visibleCollaborators
     }
-  };
+  }
 }

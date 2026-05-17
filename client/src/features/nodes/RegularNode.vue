@@ -1,78 +1,78 @@
 <script setup lang="ts">
-import { Handle, Position } from "@vue-flow/core";
-import { NodeResizer, type OnResize, type OnResizeEnd, type OnResizeStart } from "@vue-flow/node-resizer";
-import "@vue-flow/node-resizer/dist/style.css";
-import { computed, defineComponent, h, type PropType } from "vue";
-import type { SyncNodeData, SyncPort, SyncPresenceUser } from "@vue-flow-sync/shared";
-import { getMeasuredItemNodeHeight } from "../../domain/graph";
-import NodeContent from "./NodeContent.vue";
-import type { NodeBodyUpdate } from "./types";
-import { useStableResizerStyle } from "./useStableResizerStyle";
+import { Handle, Position } from '@vue-flow/core'
+import { NodeResizer, type OnResize, type OnResizeEnd, type OnResizeStart } from '@vue-flow/node-resizer'
+import '@vue-flow/node-resizer/dist/style.css'
+import { computed, defineComponent, h, type PropType } from 'vue'
+import type { SyncNodeData, SyncPort, SyncPresenceUser } from '@vue-flow-sync/shared'
+import { getMeasuredItemNodeHeight } from '../../domain/graph'
+import NodeContent from './NodeContent.vue'
+import type { NodeBodyUpdate } from './types'
+import { useStableResizerStyle } from './useStableResizerStyle'
 
 const props = defineProps<{
-  id: string;
-  data: SyncNodeData;
-  selected?: boolean;
-  showResizer?: boolean;
-  selectedUsers?: SyncPresenceUser[];
-  readonlyPreview?: boolean;
-  viewportZoom?: number;
-}>();
+  id: string
+  data: SyncNodeData
+  selected?: boolean
+  showResizer?: boolean
+  selectedUsers?: SyncPresenceUser[]
+  readonlyPreview?: boolean
+  viewportZoom?: number
+}>()
 
 defineEmits<{
-  "update-title": [id: string, value: string];
-  "update-body": [id: string, update: NodeBodyUpdate];
-  "upload-image": [id: string, file: File];
-  "resize-start": [id: string, params: OnResizeStart["params"]];
-  resize: [id: string, params: OnResize["params"]];
-  "resize-end": [id: string, params: OnResizeEnd["params"]];
-  "open-menu": [id: string, event: MouseEvent];
-  "add-port": [id: string];
-}>();
+  'update-title': [id: string, value: string]
+  'update-body': [id: string, update: NodeBodyUpdate]
+  'upload-image': [id: string, file: File]
+  'resize-start': [id: string, params: OnResizeStart['params']]
+  resize: [id: string, params: OnResize['params']]
+  'resize-end': [id: string, params: OnResizeEnd['params']]
+  'open-menu': [id: string, event: MouseEvent]
+  'add-port': [id: string]
+}>()
 
 const ports = computed<SyncPort[]>(() =>
-  props.data.ports?.length ? props.data.ports : [{ id: "main", color: "#0f766e" }]
-);
+  props.data.ports?.length ? props.data.ports : [{ id: 'main', color: '#0f766e' }]
+)
 const workloadSeed = computed(() =>
   Array.from(props.id).reduce((total, character) => total + character.charCodeAt(0), 0)
-);
-const visibleWidget = computed(() => workloadSeed.value % 4);
+)
+const visibleWidget = computed(() => workloadSeed.value % 4)
 const widgetBars = computed(() =>
   Array.from({ length: 14 }, (_, index) => ((workloadSeed.value + index * 17) % 82) + 12)
-);
+)
 const hiddenTiles = computed(() =>
   Array.from({ length: 42 }, (_, index) => ({
     id: index,
     tone: (workloadSeed.value + index) % 7,
     value: ((workloadSeed.value * (index + 3)) % 91) + 9
   }))
-);
-const minimumNodeWidth = computed(() => 320 + Math.max(0, ports.value.length - 8) * 14);
+)
+const minimumNodeWidth = computed(() => 320 + Math.max(0, ports.value.length - 8) * 14)
 const minimumNodeHeight = computed(() =>
   getMeasuredItemNodeHeight({
     id: props.id,
-    type: "item",
+    type: 'item',
     position: { x: 0, y: 0 },
     data: props.data
   })
-);
-const resizerStyle = useStableResizerStyle(() => props.viewportZoom);
+)
+const resizerStyle = useStableResizerStyle(() => props.viewportZoom)
 
-function portTop(index: number) {
-  return `${((index + 1) / (ports.value.length + 1)) * 100}%`;
+const portTop = (index: number) => {
+  return `${((index + 1) / (ports.value.length + 1)) * 100}%`
 }
 
-function userInitials(name: string) {
+const userInitials = (name: string) => {
   return name
     .trim()
     .split(/\s+/)
     .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
 }
 
 const DenseBars = defineComponent({
-  name: "DenseBars",
+  name: 'DenseBars',
   props: {
     bars: {
       type: Array as PropType<number[]>,
@@ -82,37 +82,37 @@ const DenseBars = defineComponent({
   setup(componentProps) {
     return () =>
       h(
-        "div",
-        { class: "node-widget bars-widget", "aria-hidden": "true" },
+        'div',
+        { class: 'node-widget bars-widget', 'aria-hidden': 'true' },
         componentProps.bars.map((bar, index) =>
-          h("span", { key: index, style: { height: `${bar}%` } })
+          h('span', { key: index, style: { height: `${bar}%` } })
         )
-      );
+      )
   }
-});
+})
 
 const StatusMatrix = defineComponent({
-  name: "StatusMatrix",
+  name: 'StatusMatrix',
   props: {
     tiles: {
-      type: Array as PropType<Array<{ id: number; tone: number; value: number }>>,
+      type: Array as PropType<Array<{ id: number, tone: number, value: number }>>,
       required: true
     }
   },
   setup(componentProps) {
     return () =>
       h(
-        "div",
-        { class: "node-widget matrix-widget", "aria-hidden": "true" },
+        'div',
+        { class: 'node-widget matrix-widget', 'aria-hidden': 'true' },
         componentProps.tiles
           .slice(0, 18)
-          .map((tile) => h("span", { key: tile.id, class: `tone-${tile.tone}` }))
-      );
+          .map((tile) => h('span', { key: tile.id, class: `tone-${tile.tone}` }))
+      )
   }
-});
+})
 
 const MiniGauge = defineComponent({
-  name: "MiniGauge",
+  name: 'MiniGauge',
   props: {
     seed: {
       type: Number,
@@ -121,13 +121,13 @@ const MiniGauge = defineComponent({
   },
   setup(componentProps) {
     return () =>
-      h("div", { class: "node-widget gauge-widget", "aria-hidden": "true" }, [
-        h("span", {
+      h('div', { class: 'node-widget gauge-widget', 'aria-hidden': 'true' }, [
+        h('span', {
           style: { transform: `rotate(${(componentProps.seed % 130) - 65}deg)` }
         })
-      ]);
+      ])
   }
-});
+})
 
 </script>
 
@@ -156,7 +156,10 @@ const MiniGauge = defineComponent({
         @resize-end="$emit('resize-end', id, $event.params)"
       />
     </div>
-    <div v-if="selectedUsers?.length" class="node-presence">
+    <div
+      v-if="selectedUsers?.length"
+      class="node-presence"
+    >
       <span
         v-for="user in selectedUsers"
         :key="user.id"
@@ -183,10 +186,10 @@ const MiniGauge = defineComponent({
           alt=""
           draggable="false"
           @dragstart.prevent
-        />
-        <span></span>
-        <span></span>
-        <span></span>
+        >
+        <span />
+        <span />
+        <span />
       </div>
     </template>
     <template v-else>
@@ -198,11 +201,23 @@ const MiniGauge = defineComponent({
         @open-menu="$emit('open-menu', id, $event)"
         @add-port="$emit('add-port', id)"
       />
-      <DenseBars v-if="visibleWidget === 0" :bars="widgetBars" />
-      <StatusMatrix v-else-if="visibleWidget === 1" :tiles="hiddenTiles" />
-      <MiniGauge v-else-if="visibleWidget === 2" :seed="workloadSeed" />
+      <DenseBars
+        v-if="visibleWidget === 0"
+        :bars="widgetBars"
+      />
+      <StatusMatrix
+        v-else-if="visibleWidget === 1"
+        :tiles="hiddenTiles"
+      />
+      <MiniGauge
+        v-else-if="visibleWidget === 2"
+        :seed="workloadSeed"
+      />
     </template>
-    <template v-for="(port, index) in ports" :key="`source-${port.id}`">
+    <template
+      v-for="(port, index) in ports"
+      :key="`source-${port.id}`"
+    >
       <Handle
         :id="port.id"
         type="source"

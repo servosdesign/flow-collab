@@ -1,42 +1,42 @@
 <script setup lang="ts">
-import { Handle, Position } from "@vue-flow/core";
-import { NodeResizer, type OnResize, type OnResizeEnd, type OnResizeStart } from "@vue-flow/node-resizer";
-import "@vue-flow/node-resizer/dist/style.css";
-import type { SyncNodeData, SyncPresenceUser } from "@vue-flow-sync/shared";
-import SectionContent from "./SectionContent.vue";
-import type { NodeBodyUpdate } from "./types";
-import { useStableResizerStyle } from "./useStableResizerStyle";
+import { Handle, Position } from '@vue-flow/core'
+import { NodeResizer, type OnResize, type OnResizeEnd, type OnResizeStart } from '@vue-flow/node-resizer'
+import '@vue-flow/node-resizer/dist/style.css'
+import type { SyncNodeData, SyncPresenceUser } from '@vue-flow-sync/shared'
+import SectionContent from './SectionContent.vue'
+import type { NodeBodyUpdate } from './types'
+import { useStableResizerStyle } from './useStableResizerStyle'
 
 const props = defineProps<{
-  id: string;
-  data: SyncNodeData;
-  selected?: boolean;
-  showResizer?: boolean;
-  selectedUsers?: SyncPresenceUser[];
-  readonlyPreview?: boolean;
-  viewportZoom?: number;
-}>();
+  id: string
+  data: SyncNodeData
+  selected?: boolean
+  showResizer?: boolean
+  selectedUsers?: SyncPresenceUser[]
+  readonlyPreview?: boolean
+  viewportZoom?: number
+}>()
 
 defineEmits<{
-  "update-title": [id: string, value: string];
-  "update-body": [id: string, update: NodeBodyUpdate];
-  "upload-image": [id: string, file: File];
-  "resize-start": [id: string, params: OnResizeStart["params"]];
-  resize: [id: string, params: OnResize["params"]];
-  "resize-end": [id: string, params: OnResizeEnd["params"]];
-  "open-menu": [id: string, event: MouseEvent];
-  "add-port": [id: string];
-}>();
+  'update-title': [id: string, value: string]
+  'update-body': [id: string, update: NodeBodyUpdate]
+  'upload-image': [id: string, file: File]
+  'resize-start': [id: string, params: OnResizeStart['params']]
+  resize: [id: string, params: OnResize['params']]
+  'resize-end': [id: string, params: OnResizeEnd['params']]
+  'open-menu': [id: string, event: MouseEvent]
+  'add-port': [id: string]
+}>()
 
-const resizerStyle = useStableResizerStyle(() => props.viewportZoom);
+const resizerStyle = useStableResizerStyle(() => props.viewportZoom)
 
-function userInitials(name: string) {
+const userInitials = (name: string) => {
   return name
     .trim()
     .split(/\s+/)
     .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
 }
 </script>
 
@@ -65,7 +65,10 @@ function userInitials(name: string) {
         @resize-end="$emit('resize-end', id, $event.params)"
       />
     </div>
-    <div v-if="selectedUsers?.length" class="node-presence">
+    <div
+      v-if="selectedUsers?.length"
+      class="node-presence"
+    >
       <span
         v-for="user in selectedUsers"
         :key="user.id"
@@ -111,8 +114,8 @@ function userInitials(name: string) {
     />
     <template v-if="readonlyPreview">
       <div class="lod-node-preview section-lod-preview">
-        <span></span>
-        <span></span>
+        <span />
+        <span />
       </div>
     </template>
     <template v-else>

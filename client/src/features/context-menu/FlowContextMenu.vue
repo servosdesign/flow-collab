@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Copy, Trash2 } from "@lucide/vue";
-import { useContextMenuContext } from "../../app/flowEditorContext";
+import { Copy, Trash2 } from '@lucide/vue'
+import { useContextMenuContext } from '../../app/flowEditorContext'
 
 const {
   contextTarget,
@@ -9,7 +9,7 @@ const {
   duplicateCount,
   duplicateCountValue,
   selectedLabel
-} = useContextMenuContext();
+} = useContextMenuContext()
 </script>
 
 <template>
@@ -19,7 +19,9 @@ const {
     :style="{ left: `${contextTarget.x}px`, top: `${contextTarget.y}px` }"
     @click.stop
   >
-    <div class="context-title">{{ selectedLabel }}</div>
+    <div class="context-title">
+      {{ selectedLabel }}
+    </div>
     <label class="context-count">
       <span>Copies</span>
       <input
@@ -29,14 +31,27 @@ const {
         max="20"
         step="1"
         @click.stop
-      />
+      >
     </label>
-    <button type="button" @click="duplicateContextTarget">
-      <Copy :size="16" aria-hidden="true" />
+    <button
+      type="button"
+      @click="duplicateContextTarget"
+    >
+      <Copy
+        :size="16"
+        aria-hidden="true"
+      />
       <span>Duplicate {{ duplicateCountValue }}x</span>
     </button>
-    <button type="button" class="danger" @click="deleteContextTarget">
-      <Trash2 :size="16" aria-hidden="true" />
+    <button
+      type="button"
+      class="danger"
+      @click="deleteContextTarget"
+    >
+      <Trash2
+        :size="16"
+        aria-hidden="true"
+      />
       <span>Delete</span>
     </button>
   </div>

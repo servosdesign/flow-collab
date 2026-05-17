@@ -1,4 +1,4 @@
-import { Schema, model } from "mongoose";
+import { Schema, model } from 'mongoose'
 
 const flowSchema = new Schema(
   {
@@ -26,14 +26,14 @@ const flowSchema = new Schema(
     minimize: false,
     versionKey: false
   }
-);
+)
 
-flowSchema.set("toJSON", {
+flowSchema.set('toJSON', {
   transform(_document, ret) {
-    const json = ret as Record<string, unknown>;
-    delete json._id;
-    return ret;
+    const json = ret as Record<string, unknown>
+    delete json._id
+    return ret
   }
-});
+})
 
-export const FlowModel = model("Flow", flowSchema);
+export const FlowModel = model('Flow', flowSchema)

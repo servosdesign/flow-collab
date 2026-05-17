@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { SyncNodeData } from "@vue-flow-sync/shared";
-import { useNodeRendererContext } from "../../app/flowEditorContext";
-import RegularNode from "../nodes/RegularNode.vue";
+import type { SyncNodeData } from '@vue-flow-sync/shared'
+import { useNodeRendererContext } from '../../app/flowEditorContext'
+import RegularNode from '../nodes/RegularNode.vue'
 
 defineProps<{
-  id: string;
-  data: SyncNodeData;
-}>();
+  id: string
+  data: SyncNodeData
+}>()
 
 const {
   addNodePort,
@@ -22,11 +22,12 @@ const {
   startNodeResize,
   submitNodeData,
   uploadImage
-} = useNodeRendererContext();
+} = useNodeRendererContext()
 </script>
 
 <template>
   <RegularNode
+    :id="id"
     v-memo="[
       id,
       data,
@@ -36,7 +37,6 @@ const {
       getNodeResizerZoom(id),
       !isLoggedIn
     ]"
-    :id="id"
     :data="data"
     :selected="!isLassoSelecting && isNodeSelected(id)"
     :show-resizer="shouldShowNodeResizer(id)"
