@@ -72,13 +72,15 @@ export const useSelectionMove = (
 
     if (sectionDragPreview) {
       const showSummary = sectionDragPreview.showSummary
+      const prearmed = Boolean(sectionDragPreview.prearmed)
 
       return {
         active: true,
         interactionShield: false,
         coverContents: sectionDragPreview.hideStrategy === 'cover',
-        showOriginMask: false,
+        showOriginMask: prearmed,
         showSummary,
+        prearmed,
         ...sectionDragPreview.previewCounts,
         shapes: showSummary ? [{ id: 0, kind: 'section' }] as SelectionMovePreviewShape[] : []
       }
@@ -97,6 +99,7 @@ export const useSelectionMove = (
         coverContents: false,
         showOriginMask: false,
         showSummary: false,
+        prearmed: false,
         itemCount: 0,
         sectionCount: 0,
         containedCount: 0,
@@ -118,6 +121,7 @@ export const useSelectionMove = (
       coverContents: isSingleSectionBundle,
       showOriginMask: selectionMoveDrag.presentationStrategy === 'origin-mask',
       showSummary: true,
+      prearmed: false,
       ...selectionMoveDrag.previewCounts,
       shapes
     }
@@ -244,6 +248,14 @@ export const useSelectionMove = (
 
     runtime.sectionNodeDragPreview.value = null
     selectionMovePresentation.clearSelectionMoveHiddenIds()
+  }
+
+  const clearPrearmedSectionNodeDragPreview = () => {
+    if (!runtime.sectionNodeDragPreview.value?.prearmed) {
+      return
+    }
+
+    runtime.sectionNodeDragPreview.value = null
   }
 
   const applySelectionMoveFrame = () => {
@@ -819,6 +831,41 @@ export const useSelectionMove = (
     }
   }
 
+  const prearmSingleSectionMovePreview = (
+    metadata: SingleSectionMoveStartMetadata
+  ) => {
+    if (metadata.mode !== 'bundle') {
+      return
+    }
+
+    runtime.sectionNodeDragPreview.value = {
+      sectionId: metadata.syncSection.id,
+      previewCounts: metadata.previewCounts,
+      hiddenIds: metadata.hiddenIds,
+      hideStrategy: 'cover',
+      showSummary: true,
+      prearmed: true,
+      selectedFlowBounds: metadata.selectedFlowBounds
+    }
+  }
+
+  const cachePrearmedSectionMovePreviewElement = (
+    pending: PendingNodePointerMove
+  ) => {
+    nextTick(() => {
+      if (
+        pendingNodePointerMove !== pending ||
+        runtime.interaction.selectionMoveDrag ||
+        !runtime.sectionNodeDragPreview.value?.prearmed
+      ) {
+        return
+      }
+
+      pending.prearmedPreviewElement =
+        runtime.canvasPanel.value?.querySelector<HTMLElement>('.selected-nodes-outline') ?? null
+    })
+  }
+
   const beginSingleSectionMove = (
     event: PointerEvent,
     pending: PendingNodePointerMove,
@@ -827,17 +874,18 @@ export const useSelectionMove = (
     const metadata = pending.singleSectionMove ?? buildSingleSectionMoveStartMetadata(sectionNode)
 
     if (!metadata) {
+      clearPrearmedSectionNodeDragPreview()
       return false
     }
 
-    return beginSelectionMove({
+    const started = beginSelectionMove({
       startClientX: pending.startClientX,
       startClientY: pending.startClientY,
       currentClientX: event.clientX,
       currentClientY: event.clientY,
       pointerId: pending.pointerId,
       target: pending.target,
-      previewElement: null,
+      previewElement: pending.prearmedPreviewElement ?? null,
       movingIds: metadata.movingIds,
       selectedFlowBounds: metadata.selectedFlowBounds,
       normalizedOriginalNodes: [metadata.syncSection],
@@ -848,6 +896,10 @@ export const useSelectionMove = (
       mode: metadata.mode,
       dragMetadata: metadata.dragMetadata
     })
+
+    clearPrearmedSectionNodeDragPreview()
+
+    return started
   }
 
   const startPendingNodePointerMove = (event: PointerEvent, pending: PendingNodePointerMove) => {
@@ -868,7 +920,9 @@ export const useSelectionMove = (
       }
 
       activePendingSelectionNodeId = pending.pendingSelectionNodeId ?? null
-      attachSelectionMovePreviewElementOnNextTick()
+      if (!selectionMovePresentation.getSelectionMovePreviewElement()) {
+        attachSelectionMovePreviewElementOnNextTick()
+      }
       runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350
 
       return true
@@ -926,6 +980,8 @@ export const useSelectionMove = (
   }
 
   const clearPendingNodePointerMove = (event?: PointerEvent) => {
+    clearPrearmedSectionNodeDragPreview()
+
     if (
       event &&
       selectionMovePointerCaptureTarget?.hasPointerCapture(event.pointerId)
@@ -994,6 +1050,7 @@ export const useSelectionMove = (
     runtime.isResizingNode.value = false
 
     if (!runtime.interaction.selectionMoveDrag) {
+      clearPrearmedSectionNodeDragPreview()
       if (selectionMovePointerCaptureTarget?.hasPointerCapture(event.pointerId)) {
         selectionMovePointerCaptureTarget.releasePointerCapture(event.pointerId)
       }
@@ -1076,6 +1133,12 @@ export const useSelectionMove = (
       pendingSelectionNodeId: optionsOverride.pendingSelectionNodeId,
       singleSectionMove: singleSectionMove ?? undefined
     }
+
+    if (singleSectionMove?.mode === 'bundle' && pendingNodePointerMove) {
+      prearmSingleSectionMovePreview(singleSectionMove)
+      cachePrearmedSectionMovePreviewElement(pendingNodePointerMove)
+    }
+
     selectionMovePointerCaptureTarget = target
     selectionMovePointerId = event.pointerId
     if (target && typeof target.setPointerCapture === 'function') {

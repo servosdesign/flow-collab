@@ -57,10 +57,13 @@ export const useSelectionOverlayModel = (
       return getFlowBoundsStyle(selectionMoveDrag.selectedFlowBounds, viewport)
     }
 
-    const graphNodes = services.getCurrentSyncNodes()
-    const graph = createGraphCache(graphNodes)
-
     if (sectionDragPreview) {
+      if (sectionDragPreview.selectedFlowBounds) {
+        return getFlowBoundsStyle(sectionDragPreview.selectedFlowBounds, viewport)
+      }
+
+      const graphNodes = services.getCurrentSyncNodes()
+      const graph = createGraphCache(graphNodes)
       const section = graph.nodeById.get(sectionDragPreview.sectionId)
 
       if (!section) {
@@ -75,6 +78,8 @@ export const useSelectionOverlayModel = (
       return null
     }
 
+    const graphNodes = services.getCurrentSyncNodes()
+    const graph = createGraphCache(graphNodes)
     const selectedIds = runtime.selectedNodeIds.value
     let selectedCount = 0
     let minX = Number.POSITIVE_INFINITY

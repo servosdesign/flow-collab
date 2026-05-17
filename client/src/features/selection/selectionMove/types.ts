@@ -90,6 +90,7 @@ export type PendingNodePointerMove = {
   target: HTMLElement | null
   pendingSelectionNodeId?: string
   singleSectionMove?: SingleSectionMoveStartMetadata
+  prearmedPreviewElement?: HTMLElement | null
 }
 
 export type PendingSelectionMoveCommit = {

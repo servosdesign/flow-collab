@@ -50,12 +50,22 @@ export type SectionDragCandidateBounds = {
   area: number
 }
 
+export type SelectionMoveFlowBounds = {
+  x: number
+  y: number
+  width: number
+  height: number
+  padding: number
+}
+
 export type SectionNodeDragPreview = {
   sectionId: string
   previewCounts: SelectionMovePreviewCounts
   hiddenIds: Set<string>
   hideStrategy: 'cover'
   showSummary: boolean
+  prearmed?: boolean
+  selectedFlowBounds?: SelectionMoveFlowBounds | null
 }
 
 export type SelectionMoveRuntimeSnapshot = {
@@ -96,13 +106,7 @@ export type SelectionMoveDrag = {
   previewCounts: SelectionMovePreviewCounts
   previewShapeKinds: SelectionMovePreviewShapeKind[]
   frame?: number
-  selectedFlowBounds: {
-    x: number
-    y: number
-    width: number
-    height: number
-    padding: number
-  } | null
+  selectedFlowBounds: SelectionMoveFlowBounds | null
 }
 
 export type FlowTimers = {

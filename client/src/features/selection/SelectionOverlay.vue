@@ -144,6 +144,7 @@ const previewSecondaryLabel = () => {
   <div
     v-if="selectedBoundsStyle && selectionMovePreview.showOriginMask"
     class="selection-move-origin-mask"
+    :class="{ 'selection-preview-prearmed': selectionMovePreview.prearmed }"
     :style="selectedBoundsStyle"
     aria-hidden="true"
   />
@@ -153,7 +154,8 @@ const previewSecondaryLabel = () => {
     class="selected-nodes-outline"
     :class="{
       'selection-preview-active': selectionMovePreview.active,
-      'selection-preview-cover': selectionMovePreview.coverContents
+      'selection-preview-cover': selectionMovePreview.coverContents,
+      'selection-preview-prearmed': selectionMovePreview.prearmed
     }"
     :style="selectedBoundsStyle"
     @pointerdown="handleSelectedBoundsPointerDown"
