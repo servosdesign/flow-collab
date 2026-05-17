@@ -56,6 +56,7 @@ export const useEditorViewModels = ({
     isMovingSelection,
     loginNameInput,
     loginPasswordInput,
+    miniMapGeometryVersion,
     nodes,
     pendingCreate,
     selectionMoveHiddenEdgeIds,
@@ -221,6 +222,7 @@ export const useEditorViewModels = ({
       getMiniMapNodeStroke,
       isDropSettling,
       isLoggedIn,
+      miniMapGeometryVersion,
       selectedNodeIds
     },
     canvasOverlay: {

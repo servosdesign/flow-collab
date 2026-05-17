@@ -20,7 +20,12 @@ import type { FlowRuntime } from '../../flowRuntime'
 
 export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServices) => {
   const granularNodeFields = new Set(['data', 'style', 'width', 'height', 'position'])
+  const miniMapGeometryFields = new Set(['style', 'width', 'height', 'position'])
   const isResettingFlow = ref(false)
+
+  const bumpMiniMapGeometryVersion = () => {
+    runtime.miniMapGeometryVersion.value += 1
+  }
 
   const toRuntimeNode = (documentNode: SyncNode) => {
     return services.withSelectionState([
@@ -65,6 +70,7 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
 
     let nodeIndex: number | undefined
     let shouldRefreshNodeInternals = false
+    let shouldRefreshMiniMapGeometry = false
 
     for (const component of operation) {
       const path = component.p
@@ -88,6 +94,9 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
 
       if (path[2] === 'data' && path[3] === 'ports') {
         shouldRefreshNodeInternals = true
+      }
+      if (miniMapGeometryFields.has(path[2])) {
+        shouldRefreshMiniMapGeometry = true
       }
     }
 
@@ -121,6 +130,9 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
 
     if (shouldRefreshNodeInternals) {
       nextTick(() => runtime.updateNodeInternals?.([documentNode.id]))
+    }
+    if (shouldRefreshMiniMapGeometry) {
+      bumpMiniMapGeometryVersion()
     }
 
     finishRemoteApply()
@@ -205,6 +217,7 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
       )
     }
     runtime.nodes.value = nextNodes
+    bumpMiniMapGeometryVersion()
 
     if (changedNodeIds.size > 0) {
       nextTick(() => runtime.updateNodeInternals?.(Array.from(changedNodeIds)))
@@ -260,6 +273,7 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
         Array.from(runtime.selectedNodeIds.value).filter((nodeId) => documentNodeIds.has(nodeId))
       )
       runtime.nodes.value = nextNodes
+      bumpMiniMapGeometryVersion()
     }
 
     if (edgeComponent && !sameJson(edgeComponent.od, edgeComponent.oi)) {
@@ -321,6 +335,9 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
     orderNodesByHierarchy(nextNodes)
     runtime.nodes.value = services.withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[])
     runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges))
+    if (!sameJson(oldNodes, nextNodes)) {
+      bumpMiniMapGeometryVersion()
+    }
     nextTick(() => {
       runtime.updateNodeInternals?.(nextNodes.map((node) => node.id))
     })

@@ -424,6 +424,7 @@ export const useNodeActions = (runtime: FlowRuntime, services: FlowEditorService
 
     runtime.nodes.value = withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[])
     runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges))
+    runtime.miniMapGeometryVersion.value += 1
 
     submitOperation([
       {
@@ -467,6 +468,7 @@ export const useNodeActions = (runtime: FlowRuntime, services: FlowEditorService
 
     runtime.nodes.value = withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[])
     runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges))
+    runtime.miniMapGeometryVersion.value += 1
 
     submitOperation([
       {

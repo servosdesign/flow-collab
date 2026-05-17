@@ -87,9 +87,6 @@ const confirmResetFlow = () => {
     >
       <span><strong>{{ nodeCount }}</strong> nodes</span>
       <span><strong>{{ edgeCount }}</strong> edges</span>
-    </div>
-
-    <div class="topbar-actions">
       <button
         v-if="isLoggedIn"
         type="button"
@@ -104,7 +101,9 @@ const confirmResetFlow = () => {
         />
         <span>{{ isResettingFlow ? 'Resetting' : 'Reset' }}</span>
       </button>
+    </div>
 
+    <div class="topbar-actions">
       <div
         v-if="isLoggedIn"
         class="presence-tools"

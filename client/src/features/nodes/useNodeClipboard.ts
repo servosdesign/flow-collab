@@ -1,7 +1,12 @@
 import type { SyncEdge, SyncNode } from '@vue-flow-sync/shared'
 import type { FlowEditorServices } from '../../app/flowEditorServices'
 import {
+  cloneJson,
+  createGraphCache,
+  orderNodesByHierarchy,
+  removeNodeFromSection,
   stripParentExtent,
+  withDefaultEdges,
   type FlowEdge,
   type FlowNode
 } from '../../domain/graph'
@@ -16,14 +21,20 @@ export const useNodeClipboard = (runtime: FlowRuntime, services: FlowEditorServi
     }
 
     const removedIds = new Set(nodeIds)
+    const originalGraph = createGraphCache(document.data.nodes, document.data.edges)
+    const nextNodes = orderNodesByHierarchy(
+      document.data.nodes
+        .filter((node) => !removedIds.has(node.id))
+        .map((node) => {
+          const nextNode = cloneJson(node)
 
-    document.data.nodes.forEach((node) => {
-      if (node.parentNode && removedIds.has(node.parentNode)) {
-        removedIds.add(node.id)
-      }
-    })
+          if (nextNode.parentNode && removedIds.has(nextNode.parentNode)) {
+            removeNodeFromSection(nextNode, originalGraph)
+          }
 
-    const nextNodes = document.data.nodes.filter((node) => !removedIds.has(node.id))
+          return nextNode
+        })
+    )
     const nextEdges = document.data.edges.filter(
       (edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target)
     )
@@ -32,7 +43,7 @@ export const useNodeClipboard = (runtime: FlowRuntime, services: FlowEditorServi
     )
 
     runtime.nodes.value = services.withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[])
-    runtime.edges.value = nextEdges as FlowEdge[]
+    runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges))
     services.submitOperation([
       {
         p: ['nodes'],

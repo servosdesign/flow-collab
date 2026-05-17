@@ -157,6 +157,10 @@ export const useSelectionMove = (
     runtime.selectionMovePreviewVersion.value += 1
   }
 
+  const bumpMiniMapGeometryVersion = () => {
+    runtime.miniMapGeometryVersion.value += 1
+  }
+
   const selectionMovePreview = computed(() => {
     const sectionDragPreview = runtime.sectionNodeDragPreview.value
 
@@ -1384,6 +1388,7 @@ export const useSelectionMove = (
     changes: Array<{ index: number, oldNode: SyncNode, nextNode: SyncNode }>
   ) => {
     applyVisibleSelectionMove(drag, false)
+    bumpMiniMapGeometryVersion()
 
     services.submitOperation(
       changes.map(({ index, oldNode, nextNode }) => ({
@@ -2511,6 +2516,7 @@ export const useSelectionMove = (
     }
 
     runtime.nodes.value = services.withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[])
+    bumpMiniMapGeometryVersion()
 
     if (edgesChanged) {
       runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges))

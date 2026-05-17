@@ -88,6 +88,7 @@
 }
 
 .flow-summary {
+  flex-wrap: wrap;
   gap: 14px;
   justify-content: center;
   color: #5d6978;
@@ -109,9 +110,12 @@
 .presence-tools {
   min-width: 0;
   max-width: 154px;
+  min-height: 42px;
   flex-direction: row-reverse;
   justify-content: flex-start;
   overflow: hidden;
+  padding: 4px 0 8px;
+  margin: -4px 0 -8px;
 }
 
 .user-chip {
@@ -120,17 +124,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: -7px;
+  margin-right: -7px;
   border: 2px solid #ffffff;
   border-radius: 999px;
   color: #ffffff;
   font-size: 11px;
   font-weight: 900;
-  box-shadow: 0 4px 12px rgb(22 33 43 / 18%);
+  box-shadow:
+    inset 0 -12px 12px -10px rgb(15 23 42 / 55%),
+    0 5px 8px -7px rgb(22 33 43 / 34%);
 }
 
 .user-chip:first-child {
-  margin-left: 0;
+  margin-right: 0;
 }
 
 .topbar-button {

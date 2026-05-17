@@ -40,6 +40,8 @@ const viewBoxOffsetScale = 5
 const maskColor = 'rgb(240, 240, 240, 0.6)'
 const maskStrokeColor = '#94a3b8'
 const viewportStrokeColor = '#1a73e8'
+const viewportStrokeHaloColor = '#ffffff'
+const viewportBoxMinSize = 8
 const clickMovementThreshold = 4
 const wheelZoomStep = 0.002
 const maxDevicePixelRatio = 2
@@ -84,6 +86,7 @@ const {
   getMiniMapNodeStroke,
   isDropSettling,
   isLoggedIn,
+  miniMapGeometryVersion,
   selectedNodeIds
 } = useMiniMapContext()
 
@@ -270,7 +273,10 @@ const drawViewportMaskLayer = (viewBox: Rect, canvasSize: CanvasSize) => {
   }
 
   const viewRect = viewportRect()
-  const canvasRect = toCanvasRect(viewRect, viewBox, canvasSize.width, canvasSize.height)
+  const canvasRect = getVisibleViewportCanvasRect(
+    toCanvasRect(viewRect, viewBox, canvasSize.width, canvasSize.height),
+    canvasSize
+  )
   const path = new Path2D()
 
   path.rect(0, 0, canvasSize.width, canvasSize.height)
@@ -282,8 +288,11 @@ const drawViewportMaskLayer = (viewBox: Rect, canvasSize: CanvasSize) => {
   ctx.strokeStyle = maskStrokeColor
   ctx.lineWidth = 1
   ctx.strokeRect(0.5, 0.5, Math.max(0, canvasSize.width - 1), Math.max(0, canvasSize.height - 1))
+  ctx.strokeStyle = viewportStrokeHaloColor
+  ctx.lineWidth = 3
+  ctx.strokeRect(canvasRect.x, canvasRect.y, canvasRect.width, canvasRect.height)
   ctx.strokeStyle = viewportStrokeColor
-  ctx.lineWidth = 1.5
+  ctx.lineWidth = 1.75
   ctx.strokeRect(canvasRect.x, canvasRect.y, canvasRect.width, canvasRect.height)
   ctx.restore()
 }
@@ -328,7 +337,7 @@ const getCanvasSize = () : CanvasSize => {
 const getViewBox = (canvasSize: CanvasSize) : Rect | null => {
   const nodesRect = getMiniMapSnapshot().bounds
   const fallbackRect = viewportRect()
-  const boundingRect = nodesRect ?? fallbackRect
+  const boundingRect = nodesRect ? unionRect(nodesRect, fallbackRect) : fallbackRect
 
   if (boundingRect.width <= 0 || boundingRect.height <= 0) {
     return null
@@ -410,6 +419,28 @@ const toCanvasRect = (
     y: ((rect.y - viewBox.y) / viewBox.height) * canvasHeight,
     width: (rect.width / viewBox.width) * canvasWidth,
     height: (rect.height / viewBox.height) * canvasHeight
+  }
+}
+
+const clampValue = (value: number, min: number, max: number) => {
+  return Math.min(Math.max(value, min), max)
+}
+
+const getVisibleViewportCanvasRect = (rect: Rect, canvasSize: CanvasSize) : Rect => {
+  const minWidth = Math.min(viewportBoxMinSize, canvasSize.width)
+  const minHeight = Math.min(viewportBoxMinSize, canvasSize.height)
+  const width = Math.max(rect.width, minWidth)
+  const height = Math.max(rect.height, minHeight)
+  const centerX = rect.x + rect.width / 2
+  const centerY = rect.y + rect.height / 2
+  const maxX = Math.max(0, canvasSize.width - width)
+  const maxY = Math.max(0, canvasSize.height - height)
+
+  return {
+    x: clampValue(centerX - width / 2, 0, maxX),
+    y: clampValue(centerY - height / 2, 0, maxY),
+    width,
+    height
   }
 }
 
@@ -575,7 +606,6 @@ const handleWheel = (event: WheelEvent) => {
 const hasGeometryNodeChange = (changes: NodeChange[]) => {
   return changes.some((change) =>
     change.type === 'dimensions' ||
-    change.type === 'position' ||
     change.type === 'add' ||
     change.type === 'remove'
   )
@@ -604,6 +634,7 @@ const nodesChangeSubscription = onNodesChange(handleNodesChange)
 const nodesInitializedSubscription = onNodesInitialized(handleNodesInitialized)
 
 watch(nodes, markNodeLayerDirty, { flush: 'post' })
+watch(miniMapGeometryVersion, markNodeLayerDirty, { flush: 'post' })
 watch(selectedNodeIds, markNodePaintDirty, { flush: 'post' })
 
 watch(

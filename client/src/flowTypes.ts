@@ -146,6 +146,7 @@ export type FlowAppState = {
   selectionMoveHiddenNodeIds: Ref<Set<string>>
   selectionMoveHiddenEdgeIds: Ref<Set<string>>
   selectionMovePreviewVersion: Ref<number>
+  miniMapGeometryVersion: Ref<number>
   lassoPreviewNodeIds: Ref<Set<string>>
   duplicateCount: Ref<number>
   collaborators: Ref<SyncPresenceUser[]>

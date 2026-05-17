@@ -64,6 +64,7 @@ export const createFlowAppState = () : FlowAppState => {
     selectionMoveHiddenNodeIds: shallowRef<Set<string>>(new Set()),
     selectionMoveHiddenEdgeIds: shallowRef<Set<string>>(new Set()),
     selectionMovePreviewVersion: ref(0),
+    miniMapGeometryVersion: ref(0),
     lassoPreviewNodeIds: shallowRef<Set<string>>(new Set()),
     duplicateCount: ref(1),
     collaborators: ref<SyncPresenceUser[]>([]),
