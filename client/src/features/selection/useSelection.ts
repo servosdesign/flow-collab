@@ -33,14 +33,22 @@ type LassoPointerRect = {
   currentClientY: number
 }
 
+type RightContextGesture = {
+  pointerId: number
+  startClientX: number
+  startClientY: number
+}
+
 const nodeInteractiveSelector =
   'input, textarea, button, label, select, [contenteditable], [data-node-interactive]'
 const nodeMoveBlockedSelector =
   `${nodeInteractiveSelector}, .vue-flow__handle, .vue-flow__resize-control, .node-resizer-layer`
+const rightContextDragThreshold = 4
 
 export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices) => {
   let lassoBoundsCache: LassoNodeBounds[] = []
   let pendingLassoRect: LassoPointerRect | null = null
+  let rightContextGesture: RightContextGesture | null = null
   let lassoPanelOrigin = { left: 0, top: 0 }
   let lassoPointerCaptureTarget: HTMLElement | null = null
   let lassoSelectionBox: HTMLDivElement | null = null
@@ -465,7 +473,58 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
     resetLassoSelectionBox()
   }
 
+  const cleanupRightContextGesture = () => {
+    window.removeEventListener('pointermove', handleRightContextGestureMove, true)
+    window.removeEventListener('pointerup', handleRightContextGestureEnd, true)
+    window.removeEventListener('pointercancel', handleRightContextGestureEnd, true)
+    rightContextGesture = null
+  }
+
+  const handleRightContextGestureMove = (event: PointerEvent) => {
+    if (!rightContextGesture || event.pointerId !== rightContextGesture.pointerId) {
+      return
+    }
+
+    if (
+      Math.abs(event.clientX - rightContextGesture.startClientX) > rightContextDragThreshold ||
+      Math.abs(event.clientY - rightContextGesture.startClientY) > rightContextDragThreshold
+    ) {
+      runtime.interaction.suppressNextContextMenu = true
+    }
+  }
+
+  const handleRightContextGestureEnd = (event: PointerEvent) => {
+    if (rightContextGesture && event.pointerId !== rightContextGesture.pointerId) {
+      return
+    }
+
+    cleanupRightContextGesture()
+  }
+
+  const beginRightContextGesture = (event: PointerEvent) => {
+    if (!runtime.isLoggedIn.value || event.button !== 2) {
+      return false
+    }
+
+    cleanupRightContextGesture()
+    runtime.interaction.suppressNextContextMenu = false
+    rightContextGesture = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY
+    }
+    window.addEventListener('pointermove', handleRightContextGestureMove, { capture: true })
+    window.addEventListener('pointerup', handleRightContextGestureEnd, { capture: true })
+    window.addEventListener('pointercancel', handleRightContextGestureEnd, { capture: true })
+
+    return true
+  }
+
   const handleCanvasPointerDown = (event: PointerEvent) => {
+    if (beginRightContextGesture(event)) {
+      return
+    }
+
     const activeElement = document.activeElement
 
     const targetIsEditor =
@@ -681,6 +740,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
   const cleanupSelection = () => {
     window.removeEventListener('pointermove', handleRightSelectionMove, true)
     window.removeEventListener('pointerup', handleRightSelectionEnd, true)
+    cleanupRightContextGesture()
     selectionMove.cleanupSelectionMove()
     if (cursorCoordinateFrame) {
       window.cancelAnimationFrame(cursorCoordinateFrame)

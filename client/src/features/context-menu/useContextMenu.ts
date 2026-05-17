@@ -37,6 +37,18 @@ export const useContextMenu = (runtime: FlowRuntime, services: FlowEditorService
     runtime.duplicateCount.value = 1
   }
 
+  const consumeSuppressedContextMenu = (event: MouseEvent) => {
+    if (!runtime.interaction.suppressNextContextMenu) {
+      return false
+    }
+
+    runtime.interaction.suppressNextContextMenu = false
+    event.preventDefault()
+    event.stopPropagation()
+
+    return true
+  }
+
   const areSameNodeIds = (currentIds: string[], nextIds: string[]) => {
     return (
       currentIds.length === nextIds.length &&
@@ -46,6 +58,10 @@ export const useContextMenu = (runtime: FlowRuntime, services: FlowEditorService
 
   const openNodeContextMenu = (payload: NodeMouseEvent) => {
     if (!runtime.isLoggedIn.value || !(payload.event instanceof MouseEvent)) {
+      return
+    }
+
+    if (consumeSuppressedContextMenu(payload.event)) {
       return
     }
 
@@ -127,6 +143,10 @@ export const useContextMenu = (runtime: FlowRuntime, services: FlowEditorService
       return
     }
 
+    if (consumeSuppressedContextMenu(payload.event)) {
+      return
+    }
+
     payload.event.preventDefault()
     payload.event.stopPropagation()
 
@@ -141,6 +161,10 @@ export const useContextMenu = (runtime: FlowRuntime, services: FlowEditorService
 
   const openEdgeContextMenu = (payload: EdgeMouseEvent) => {
     if (!runtime.isLoggedIn.value || !(payload.event instanceof MouseEvent)) {
+      return
+    }
+
+    if (consumeSuppressedContextMenu(payload.event)) {
       return
     }
 
@@ -159,6 +183,10 @@ export const useContextMenu = (runtime: FlowRuntime, services: FlowEditorService
     const selectedIds = getSelectedNodeIds()
 
     if (!runtime.isLoggedIn.value || selectedIds.length === 0) {
+      return
+    }
+
+    if (consumeSuppressedContextMenu(event)) {
       return
     }
 
