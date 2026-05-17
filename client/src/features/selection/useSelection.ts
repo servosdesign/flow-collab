@@ -95,8 +95,7 @@ export function useSelection(runtime: FlowRuntime, services: FlowEditorServices)
     setSelectedNodes
   } = selectionState;
   const selectionMove = useSelectionMove(runtime, services, {
-    getSelectedNodeIds,
-    selectedBoundsStyle
+    getSelectedNodeIds
   });
 
   function getCurrentSyncNodes() {

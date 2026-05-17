@@ -14,6 +14,12 @@ export type FlowNode = Node<SyncNodeData, Record<string, never>, FlowNodeKind> &
 };
 export type FlowEdge = Edge<Record<string, never>>;
 export type ResizeParams = { x?: number; y?: number; width: number; height: number };
+export type MovedNodeMembershipChange = {
+  nodeId: string;
+  absolutePosition?: { x: number; y: number };
+  dimensions?: { width: number; height: number };
+  existingNode?: SyncNode;
+};
 
 export type GraphCache = {
   nodes: SyncNode[];
@@ -294,6 +300,70 @@ export function createGraphCache(nodes: SyncNode[], edges: SyncEdge[] = []): Gra
   };
 }
 
+export function orderNodesByHierarchy(nodes: SyncNode[]) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const originalIndexById = new Map(nodes.map((node, index) => [node.id, index]));
+  const childrenByParentId = new Map<string, SyncNode[]>();
+  const remainingParentsById = new Map<string, number>();
+
+  for (const node of nodes) {
+    const parent = node.parentNode ? nodeById.get(node.parentNode) : undefined;
+
+    if (!parent || parent.id === node.id) {
+      remainingParentsById.set(node.id, 0);
+      continue;
+    }
+
+    remainingParentsById.set(node.id, 1);
+    const children = childrenByParentId.get(parent.id) ?? [];
+    children.push(node);
+    childrenByParentId.set(parent.id, children);
+  }
+
+  const ordered: SyncNode[] = [];
+  const available = nodes.filter((node) => (remainingParentsById.get(node.id) ?? 0) === 0);
+
+  function sortByOriginalOrder(candidates: SyncNode[]) {
+    candidates.sort(
+      (left, right) =>
+        (originalIndexById.get(left.id) ?? 0) - (originalIndexById.get(right.id) ?? 0)
+    );
+  }
+
+  sortByOriginalOrder(available);
+
+  while (available.length > 0) {
+    const node = available.shift();
+
+    if (!node) {
+      break;
+    }
+
+    ordered.push(node);
+
+    const children = childrenByParentId.get(node.id) ?? [];
+    for (const child of children) {
+      const remainingParents = Math.max(0, (remainingParentsById.get(child.id) ?? 0) - 1);
+      remainingParentsById.set(child.id, remainingParents);
+
+      if (remainingParents === 0) {
+        available.push(child);
+      }
+    }
+
+    sortByOriginalOrder(available);
+  }
+
+  if (ordered.length < nodes.length) {
+    const orderedIds = new Set(ordered.map((node) => node.id));
+    ordered.push(...nodes.filter((node) => !orderedIds.has(node.id)));
+  }
+
+  nodes.splice(0, nodes.length, ...ordered);
+
+  return nodes;
+}
+
 export function isNodeInsideSection(
   nodeId: string | null | undefined,
   sectionId: string,
@@ -458,13 +528,18 @@ export function getOverlapRatio(
     Math.min(nodeBounds.y + nodeBounds.height, sectionBounds.y + sectionBounds.height) -
       Math.max(nodeBounds.y, sectionBounds.y)
   );
-  const nodeArea = Math.max(1, nodeBounds.width * nodeBounds.height);
-
-  return (overlapWidth * overlapHeight) / nodeArea;
+  return (overlapWidth * overlapHeight) / getBoundsArea(nodeBounds);
 }
 
 function getBoundsArea(bounds: { width: number; height: number }) {
   return Math.max(1, bounds.width * bounds.height);
+}
+
+function isBoundsCoveredEnough(
+  boundsToCover: { x: number; y: number; width: number; height: number },
+  coveringBounds: { x: number; y: number; width: number; height: number }
+) {
+  return getOverlapRatio(boundsToCover, coveringBounds) >= 0.5;
 }
 
 export function findContainingSectionForBounds(
@@ -496,7 +571,7 @@ export function findContainingSectionForBounds(
 }
 
 export function isNodeInsideSectionEnough(node: SyncNode, section: SyncNode, graph: GraphCache) {
-  return getOverlapRatio(getRenderedNodeBounds(node, graph), getNodeBounds(section, graph)) >= 0.5;
+  return isBoundsCoveredEnough(getRenderedNodeBounds(node, graph), getNodeBounds(section, graph));
 }
 
 export function setNodeParentForSection(node: SyncNode, section: SyncNode, graph: GraphCache) {
@@ -526,13 +601,15 @@ export function removeNodeFromSection(node: SyncNode, graph: GraphCache) {
 
 export function adoptContainedNodesIntoSection(section: SyncNode, graph: GraphCache) {
   if (section.type !== "section") {
-    return;
+    return false;
   }
+
+  let changed = false;
 
   for (const node of graph.nodes) {
     if (
       node.id === section.id ||
-      node.parentNode === section.id ||
+      isNodeInsideSection(node.id, section.id, graph) ||
       isAncestorSection(node.id, section.id, graph)
     ) {
       continue;
@@ -540,8 +617,11 @@ export function adoptContainedNodesIntoSection(section: SyncNode, graph: GraphCa
 
     if (isNodeInsideSectionEnough(node, section, graph)) {
       setNodeParentForSection(node, section, graph);
+      changed = true;
     }
   }
+
+  return changed;
 }
 
 export function pruneEdgesAfterSectionExit(
@@ -579,7 +659,7 @@ export function recalculateSectionMembershipInGraph(
   edgesToRecalculate: SyncEdge[],
   previousNodes: SyncNode[]
 ) {
-  const graph = createGraphCache(nextNodes, edgesToRecalculate);
+  let graph = createGraphCache(nextNodes, edgesToRecalculate);
   const previousGraph = createGraphCache(previousNodes);
   const section = graph.nodeById.get(sectionId);
 
@@ -599,49 +679,61 @@ export function recalculateSectionMembershipInGraph(
 
     if (inside && (!node.parentNode || node.parentNode === sectionId)) {
       setNodeParentForSection(node, section, graph);
+      graph = createGraphCache(nextNodes, nextEdges);
       continue;
     }
 
     if (!inside && oldParent === sectionId) {
       removeNodeFromSection(node, graph);
       nextEdges = pruneEdgesAfterSectionExit(nextEdges, node.id, sectionId, graph);
+      graph = createGraphCache(nextNodes, nextEdges);
     }
   }
 
-  return pruneInvalidSectionConnections(nextEdges, graph);
+  orderNodesByHierarchy(nextNodes);
+
+  return pruneInvalidSectionConnections(nextEdges, createGraphCache(nextNodes, nextEdges));
 }
 
-export function applySectionMembershipForMovedNode(
-  nodeId: string,
-  absolutePosition: { x: number; y: number },
-  dimensions: { width: number; height: number },
+function getMovedNodeDimensions(node: SyncNode, dimensions?: { width: number; height: number }) {
+  if (dimensions) {
+    return dimensions;
+  }
+
+  return getNodeSize(node, node.type === "section" ? 720 : 240, node.type === "section" ? 620 : 190);
+}
+
+function resolveMovedNodeParent(
+  movedNode: MovedNodeMembershipChange,
   nextNodes: SyncNode[],
   nextEdges: SyncEdge[],
-  existingNode?: SyncNode,
-  graph = createGraphCache(nextNodes, nextEdges)
+  previousGraph?: GraphCache
 ) {
-  const sourceNode = existingNode ?? graph.nodeById.get(nodeId);
+  let graph = createGraphCache(nextNodes, nextEdges);
+  const sourceNode =
+    movedNode.existingNode ??
+    previousGraph?.nodeById.get(movedNode.nodeId) ??
+    graph.nodeById.get(movedNode.nodeId);
 
   if (!sourceNode) {
-    return;
+    return false;
   }
 
   const oldSectionId = sourceNode.parentNode;
-  const draggedNode = graph.nodeById.get(nodeId);
+  const draggedNode = graph.nodeById.get(movedNode.nodeId);
 
   if (!draggedNode) {
-    return;
+    return false;
   }
 
-  const containingSection = findContainingSectionForBounds(
-    nodeId,
-    {
-      ...absolutePosition,
-      width: dimensions.width,
-      height: dimensions.height
-    },
-    graph
-  );
+  const absolutePosition = movedNode.absolutePosition ?? getAbsolutePosition(draggedNode, graph);
+  const dimensions = getMovedNodeDimensions(draggedNode, movedNode.dimensions);
+  const draggedBounds = {
+    ...absolutePosition,
+    width: dimensions.width,
+    height: dimensions.height
+  };
+  const containingSection = findContainingSectionForBounds(movedNode.nodeId, draggedBounds, graph);
   const nextSectionId = containingSection?.id;
 
   if (containingSection) {
@@ -660,15 +752,71 @@ export function applySectionMembershipForMovedNode(
     draggedNode.position = absolutePosition;
   }
 
-  adoptContainedNodesIntoSection(draggedNode, graph);
-
   if (oldSectionId && nextSectionId !== oldSectionId) {
+    graph = createGraphCache(nextNodes, nextEdges);
     const prunedEdges = pruneEdgesAfterSectionExit(nextEdges, draggedNode.id, oldSectionId, graph);
     nextEdges.splice(0, nextEdges.length, ...prunedEdges);
   }
 
-  const validEdges = pruneInvalidSectionConnections(nextEdges, graph);
+  return true;
+}
+
+export function applySectionMembershipForMovedNodes(
+  movedNodes: MovedNodeMembershipChange[],
+  nextNodes: SyncNode[],
+  nextEdges: SyncEdge[],
+  previousNodes: SyncNode[] = []
+) {
+  if (movedNodes.length === 0) {
+    return;
+  }
+
+  const previousGraph = previousNodes.length > 0 ? createGraphCache(previousNodes) : undefined;
+
+  for (const movedNode of movedNodes) {
+    resolveMovedNodeParent(movedNode, nextNodes, nextEdges, previousGraph);
+  }
+
+  for (const movedNode of movedNodes) {
+    const graph = createGraphCache(nextNodes, nextEdges);
+    const section = graph.nodeById.get(movedNode.nodeId);
+
+    if (!section || section.type !== "section") {
+      continue;
+    }
+
+    adoptContainedNodesIntoSection(section, graph);
+  }
+
+  const validEdges = pruneInvalidSectionConnections(
+    nextEdges,
+    createGraphCache(nextNodes, nextEdges)
+  );
   nextEdges.splice(0, nextEdges.length, ...validEdges);
+  orderNodesByHierarchy(nextNodes);
+}
+
+export function applySectionMembershipForMovedNode(
+  nodeId: string,
+  absolutePosition: { x: number; y: number },
+  dimensions: { width: number; height: number },
+  nextNodes: SyncNode[],
+  nextEdges: SyncEdge[],
+  existingNode?: SyncNode,
+  _graph?: GraphCache
+) {
+  applySectionMembershipForMovedNodes(
+    [
+      {
+        nodeId,
+        absolutePosition,
+        dimensions,
+        existingNode
+      }
+    ],
+    nextNodes,
+    nextEdges
+  );
 }
 
 export function isValidSectionConnection(

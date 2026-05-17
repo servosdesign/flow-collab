@@ -43,16 +43,25 @@ export type SelectionMovePreviewCounts = {
   containedSectionCount: number;
 };
 
+export type SectionDragCandidateBounds = {
+  id: string;
+  bounds: { x: number; y: number; width: number; height: number };
+  area: number;
+};
+
 export type SectionNodeDragPreview = {
   sectionId: string;
   previewCounts: SelectionMovePreviewCounts;
   hiddenIds: Set<string>;
   hideStrategy: "cover";
+  showSummary: boolean;
 };
 
 export type SelectionMoveRuntimeSnapshot = {
   id: string;
   position: { x: number; y: number };
+  hadClass: boolean;
+  className?: FlowNode["class"];
   hadComputedPosition: boolean;
   computedPosition?: { x: number; y: number; z?: number };
   hadDragging: boolean;
@@ -69,6 +78,7 @@ export type SelectionMoveDrag = {
   originalSyncNodesById: Map<string, SyncNode>;
   originalPositionsById: Map<string, { x: number; y: number }>;
   runtimeSnapshotsById: Map<string, SelectionMoveRuntimeSnapshot>;
+  sectionDragCandidatesById: Map<string, SectionDragCandidateBounds[]>;
   dragItems: NodeDragItem[];
   movingIds: Set<string>;
   movingIndexes: number[];
@@ -76,11 +86,12 @@ export type SelectionMoveDrag = {
   previewCounts: SelectionMovePreviewCounts;
   previewShapeKinds: SelectionMovePreviewShapeKind[];
   frame?: number;
-  selectedBounds: {
-    left: number;
-    top: number;
+  selectedFlowBounds: {
+    x: number;
+    y: number;
     width: number;
     height: number;
+    padding: number;
   } | null;
 };
 
@@ -97,6 +108,7 @@ export type FlowTimers = {
 export type FlowInteractionState = {
   suppressNextContextMenu: boolean;
   selectionMoveDrag: SelectionMoveDrag | null;
+  scheduleSelectionMoveFrame?: () => void;
   ignoreVueFlowSelectionUntil: number;
   isRestoringSelection: boolean;
 };

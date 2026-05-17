@@ -18,7 +18,9 @@ export function useGraphState(runtime: FlowRuntime) {
         .filter(
           (className) =>
             className !== "nested-flow-node" &&
-            className !== "selection-selected-node"
+            className !== "selection-selected-node" &&
+            className !== "section-dragging" &&
+            className !== "section-drag-over-larger-section"
         );
 
       if (node.parentNode) {

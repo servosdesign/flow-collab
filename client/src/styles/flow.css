@@ -26,8 +26,16 @@
   z-index: 1 !important;
 }
 
+.vue-flow .vue-flow__node-section.section-dragging {
+  z-index: 0 !important;
+}
+
 .vue-flow .vue-flow__node-section.nested-flow-node.selection-selected-node {
   z-index: 3 !important;
+}
+
+.vue-flow .vue-flow__node-section.section-drag-over-larger-section {
+  z-index: 4 !important;
 }
 
 .vue-flow .vue-flow__node-item.selection-selected-node {

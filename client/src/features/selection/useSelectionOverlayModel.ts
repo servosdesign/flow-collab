@@ -6,6 +6,22 @@ import {
 } from "../../domain/graph";
 import type { FlowRuntime } from "../../flowRuntime";
 
+const selectionBoundsPadding = 4;
+
+function getFlowBoundsStyle(
+  bounds: { x: number; y: number; width: number; height: number; padding?: number },
+  viewport: { x: number; y: number; zoom: number }
+) {
+  const padding = bounds.padding ?? selectionBoundsPadding;
+
+  return {
+    left: `${bounds.x * viewport.zoom + viewport.x - padding}px`,
+    top: `${bounds.y * viewport.zoom + viewport.y - padding}px`,
+    width: `${bounds.width * viewport.zoom + padding * 2}px`,
+    height: `${bounds.height * viewport.zoom + padding * 2}px`
+  };
+}
+
 export function useSelectionOverlayModel(
   runtime: FlowRuntime,
   services: FlowEditorServices
@@ -25,7 +41,7 @@ export function useSelectionOverlayModel(
 
     const hasSelectionMoveBounds = Boolean(
       isMovingSelection &&
-        selectionMoveDrag?.selectedBounds &&
+        selectionMoveDrag?.selectedFlowBounds &&
         (sectionDragPreview || selectedNodeCount > 1)
     );
 
@@ -36,13 +52,8 @@ export function useSelectionOverlayModel(
     runtime.selectionBoundsVersion.value;
     const viewport = runtime.currentViewport.value;
 
-    if (hasSelectionMoveBounds && selectionMoveDrag?.selectedBounds) {
-      return {
-        left: `${selectionMoveDrag.selectedBounds.left}px`,
-        top: `${selectionMoveDrag.selectedBounds.top}px`,
-        width: `${selectionMoveDrag.selectedBounds.width}px`,
-        height: `${selectionMoveDrag.selectedBounds.height}px`
-      };
+    if (hasSelectionMoveBounds && selectionMoveDrag?.selectedFlowBounds) {
+      return getFlowBoundsStyle(selectionMoveDrag.selectedFlowBounds, viewport);
     }
 
     const graphNodes = services.getCurrentSyncNodes();
@@ -56,14 +67,7 @@ export function useSelectionOverlayModel(
       }
 
       const bounds = getNodeBounds(section, graph);
-      const padding = 4;
-
-      return {
-        left: `${bounds.x * viewport.zoom + viewport.x - padding}px`,
-        top: `${bounds.y * viewport.zoom + viewport.y - padding}px`,
-        width: `${bounds.width * viewport.zoom + padding * 2}px`,
-        height: `${bounds.height * viewport.zoom + padding * 2}px`
-      };
+      return getFlowBoundsStyle(bounds, viewport);
     }
 
     if (selectedNodeCount < 2) {
@@ -83,30 +87,23 @@ export function useSelectionOverlayModel(
       }
 
       const bounds = getNodeBounds(node, graph);
-      const x = bounds.x * viewport.zoom + viewport.x;
-      const y = bounds.y * viewport.zoom + viewport.y;
-      const width = bounds.width * viewport.zoom;
-      const height = bounds.height * viewport.zoom;
-
       selectedCount += 1;
-      minX = Math.min(minX, x);
-      minY = Math.min(minY, y);
-      maxX = Math.max(maxX, x + width);
-      maxY = Math.max(maxY, y + height);
+      minX = Math.min(minX, bounds.x);
+      minY = Math.min(minY, bounds.y);
+      maxX = Math.max(maxX, bounds.x + bounds.width);
+      maxY = Math.max(maxY, bounds.y + bounds.height);
     }
 
     if (selectedCount === 0) {
       return null;
     }
 
-    const padding = 4;
-
-    return {
-      left: `${minX - padding}px`,
-      top: `${minY - padding}px`,
-      width: `${maxX - minX + padding * 2}px`,
-      height: `${maxY - minY + padding * 2}px`
-    };
+    return getFlowBoundsStyle({
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    }, viewport);
   });
 
   const isSingleNodeSelection = computed(() => runtime.selectedNodeIds.value.size <= 1);

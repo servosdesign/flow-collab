@@ -57,6 +57,7 @@ export function useViewport(runtime: FlowRuntime) {
       runtime.isLassoSelecting.value ||
       runtime.lassoPreviewNodeIds.value.size > 0 ||
       runtime.rightSelection.value !== null ||
+      runtime.sectionNodeDragPreview.value !== null ||
       runtime.interaction.selectionMoveDrag !== null ||
       runtime.isMovingSelection.value
     );
@@ -64,6 +65,10 @@ export function useViewport(runtime: FlowRuntime) {
 
   function refreshSelectionBounds(payload?: MovePayload) {
     runtime.currentViewport.value = getViewportFromPayload(payload);
+
+    if (runtime.interaction.selectionMoveDrag) {
+      runtime.interaction.scheduleSelectionMoveFrame?.();
+    }
 
     if (needsViewportSelectionBoundsRefresh()) {
       scheduleSelectionBoundsRefresh();

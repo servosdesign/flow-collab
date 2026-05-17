@@ -129,7 +129,7 @@ function previewSecondaryLabel() {
       aria-hidden="true"
     ></span>
     <div
-      v-if="selectionMovePreview.active"
+      v-if="selectionMovePreview.showSummary"
       class="selection-move-preview-content"
       aria-hidden="true"
     >

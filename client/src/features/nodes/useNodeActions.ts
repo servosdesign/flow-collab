@@ -4,7 +4,7 @@ import type { FlowNodeKind, SyncEdge, SyncNode } from "@vue-flow-sync/shared";
 import type { JsonOp } from "sharedb/lib/client";
 import { uploadNodeImage } from "../../api";
 import {
-  applySectionMembershipForMovedNode,
+  applySectionMembershipForMovedNodes,
   createGraphCache,
   defaultPorts,
   findContainingSectionForBounds,
@@ -381,29 +381,23 @@ export function useNodeActions(runtime: FlowRuntime, services: FlowEditorService
     }
   }
 
-  function applySectionMembershipForDraggedNode(
-    draggedGraphNode: NodeDragEvent["node"],
-    nextNodes: SyncNode[],
-    nextEdges: SyncEdge[]
-  ) {
+  function getDraggedNodeMembershipChange(draggedGraphNode: NodeDragEvent["node"]) {
     const existingNode = runtime.flowDocument.value?.data.nodes.find(
       (node) => node.id === draggedGraphNode.id
     );
 
-    applySectionMembershipForMovedNode(
-      draggedGraphNode.id,
-      {
+    return {
+      nodeId: draggedGraphNode.id,
+      absolutePosition: {
         x: Math.round(draggedGraphNode.computedPosition.x),
         y: Math.round(draggedGraphNode.computedPosition.y)
       },
-      {
+      dimensions: {
         width: draggedGraphNode.dimensions.width || 240,
         height: draggedGraphNode.dimensions.height || 190
       },
-      nextNodes,
-      nextEdges,
       existingNode
-    );
+    };
   }
 
   function handleNodeDragStop(payload: NodeDragEvent) {
@@ -421,7 +415,12 @@ export function useNodeActions(runtime: FlowRuntime, services: FlowEditorService
     const nextNodes = getCurrentSyncNodes();
     const nextEdges = getCurrentSyncEdges(nextNodes);
 
-    applySectionMembershipForDraggedNode(payload.node, nextNodes, nextEdges);
+    applySectionMembershipForMovedNodes(
+      [getDraggedNodeMembershipChange(payload.node)],
+      nextNodes,
+      nextEdges,
+      document.data.nodes
+    );
 
     runtime.nodes.value = withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[]);
     runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges));
@@ -459,9 +458,12 @@ export function useNodeActions(runtime: FlowRuntime, services: FlowEditorService
     const nextNodes = getCurrentSyncNodes();
     const nextEdges = getCurrentSyncEdges(nextNodes);
 
-    payload.nodes.forEach((node) => {
-      applySectionMembershipForDraggedNode(node, nextNodes, nextEdges);
-    });
+    applySectionMembershipForMovedNodes(
+      payload.nodes.map(getDraggedNodeMembershipChange),
+      nextNodes,
+      nextEdges,
+      document.data.nodes
+    );
 
     runtime.nodes.value = withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[]);
     runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges));

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   applySectionMembershipForMovedNode,
+  applySectionMembershipForMovedNodes,
   createGraphCache,
   getEdgeRenderType,
   getNodeSize,
@@ -207,6 +208,369 @@ assert.equal(
   section.id
 );
 assert.deepEqual(movedOutsideInsideEdges, []);
+
+function assertParentBeforeChild(nodes: SyncNode[], parentId: string, childId: string) {
+  const parentIndex = nodes.findIndex((node) => node.id === parentId);
+  const childIndex = nodes.findIndex((node) => node.id === childId);
+
+  assert.notEqual(parentIndex, -1);
+  assert.notEqual(childIndex, -1);
+  assert.equal(parentIndex < childIndex, true);
+}
+
+function cloneNodes(nodes: SyncNode[]) {
+  return nodes.map((node) => JSON.parse(JSON.stringify(node)) as SyncNode);
+}
+
+const collectingSection: SyncNode = {
+  ...section,
+  id: "section-collector",
+  position: { x: 900, y: 900 },
+  width: 700,
+  height: 600,
+  style: toNodeSizeStyle(700, 600),
+  data: { ...section.data, title: "Collector" }
+};
+const earlierItem = {
+  ...item,
+  id: "item-earlier",
+  position: { x: 100, y: 100 },
+  data: { ...item.data, title: "Earlier item" }
+};
+const sectionCollectsEarlierItemNodes = [earlierItem, collectingSection];
+applySectionMembershipForMovedNode(
+  collectingSection.id,
+  { x: 0, y: 0 },
+  { width: 700, height: 600 },
+  sectionCollectsEarlierItemNodes,
+  [],
+  collectingSection
+);
+assert.equal(
+  sectionCollectsEarlierItemNodes.find((node) => node.id === earlierItem.id)?.parentNode,
+  collectingSection.id
+);
+assertParentBeforeChild(sectionCollectsEarlierItemNodes, collectingSection.id, earlierItem.id);
+
+const smallerSection: SyncNode = {
+  ...section,
+  id: "section-smaller",
+  position: { x: 100, y: 100 },
+  width: 200,
+  height: 160,
+  style: toNodeSizeStyle(200, 160),
+  data: { ...section.data, title: "Smaller section" }
+};
+const largerSection: SyncNode = {
+  ...section,
+  id: "section-larger",
+  position: { x: 1000, y: 1000 },
+  width: 700,
+  height: 600,
+  style: toNodeSizeStyle(700, 600),
+  data: { ...section.data, title: "Larger section" }
+};
+const sectionCollectsEarlierSectionNodes = [smallerSection, largerSection];
+applySectionMembershipForMovedNode(
+  largerSection.id,
+  { x: 50, y: 50 },
+  { width: 700, height: 600 },
+  sectionCollectsEarlierSectionNodes,
+  [],
+  largerSection
+);
+assert.equal(
+  sectionCollectsEarlierSectionNodes.find((node) => node.id === smallerSection.id)?.parentNode,
+  largerSection.id
+);
+assert.equal(
+  sectionCollectsEarlierSectionNodes.find((node) => node.id === largerSection.id)?.parentNode,
+  undefined
+);
+assertParentBeforeChild(sectionCollectsEarlierSectionNodes, largerSection.id, smallerSection.id);
+
+const halfCoveredSection: SyncNode = {
+  ...section,
+  id: "section-half-covered",
+  position: { x: 250, y: 0 },
+  width: 100,
+  height: 100,
+  style: toNodeSizeStyle(100, 100),
+  data: { ...section.data, title: "Half covered" }
+};
+const halfCoveringSection: SyncNode = {
+  ...section,
+  id: "section-half-covering",
+  position: { x: 1000, y: 1000 },
+  width: 300,
+  height: 300,
+  style: toNodeSizeStyle(300, 300),
+  data: { ...section.data, title: "Half covering" }
+};
+const halfCoveredNodes = [halfCoveredSection, halfCoveringSection];
+applySectionMembershipForMovedNode(
+  halfCoveringSection.id,
+  { x: 0, y: 0 },
+  { width: 300, height: 300 },
+  halfCoveredNodes,
+  [],
+  halfCoveringSection
+);
+assert.equal(
+  halfCoveredNodes.find((node) => node.id === halfCoveredSection.id)?.parentNode,
+  halfCoveringSection.id
+);
+assertParentBeforeChild(halfCoveredNodes, halfCoveringSection.id, halfCoveredSection.id);
+
+const lessCoveredSection: SyncNode = {
+  ...section,
+  id: "section-less-covered",
+  position: { x: 251, y: 0 },
+  width: 100,
+  height: 100,
+  style: toNodeSizeStyle(100, 100),
+  data: { ...section.data, title: "Less covered" }
+};
+const lessCoveringSection: SyncNode = {
+  ...halfCoveringSection,
+  id: "section-less-covering",
+  data: { ...section.data, title: "Less covering" }
+};
+const lessCoveredNodes = [lessCoveredSection, lessCoveringSection];
+applySectionMembershipForMovedNode(
+  lessCoveringSection.id,
+  { x: 0, y: 0 },
+  { width: 300, height: 300 },
+  lessCoveredNodes,
+  [],
+  lessCoveringSection
+);
+assert.equal(
+  lessCoveredNodes.find((node) => node.id === lessCoveredSection.id)?.parentNode,
+  undefined
+);
+
+const recalculateUnorderedSection = {
+  ...section,
+  id: "section-recalculate",
+  data: { ...section.data, title: "Recalculate" }
+};
+const recalculateUnorderedItem = {
+  ...item,
+  id: "item-recalculate",
+  position: { x: 60, y: 60 },
+  data: { ...item.data, title: "Recalculate item" }
+};
+const recalculateUnorderedNodes = [recalculateUnorderedItem, recalculateUnorderedSection];
+recalculateSectionMembershipInGraph(
+  recalculateUnorderedSection.id,
+  recalculateUnorderedNodes,
+  [],
+  [{ ...recalculateUnorderedItem }, { ...recalculateUnorderedSection }]
+);
+assert.equal(
+  recalculateUnorderedNodes.find((node) => node.id === recalculateUnorderedItem.id)?.parentNode,
+  recalculateUnorderedSection.id
+);
+assertParentBeforeChild(
+  recalculateUnorderedNodes,
+  recalculateUnorderedSection.id,
+  recalculateUnorderedItem.id
+);
+
+const immediateAdoptSectionStart: SyncNode = {
+  ...section,
+  id: "section-immediate-adopt",
+  position: { x: 1000, y: 1000 },
+  width: 360,
+  height: 320,
+  style: toNodeSizeStyle(360, 320),
+  data: { ...section.data, title: "Immediate adopt" }
+};
+const immediateAdoptItem: SyncNode = {
+  ...item,
+  id: "item-immediate-adopt",
+  position: { x: 40, y: 40 },
+  width: 120,
+  height: 120,
+  style: toNodeSizeStyle(120, 120),
+  data: { ...item.data, title: "Immediate adopted item" }
+};
+const immediateAdoptPreviousNodes = cloneNodes([immediateAdoptItem, immediateAdoptSectionStart]);
+const immediateAdoptNodes = cloneNodes([
+  immediateAdoptItem,
+  { ...immediateAdoptSectionStart, position: { x: 0, y: 0 } }
+]);
+applySectionMembershipForMovedNodes(
+  [{ nodeId: immediateAdoptSectionStart.id }],
+  immediateAdoptNodes,
+  [],
+  immediateAdoptPreviousNodes
+);
+assert.equal(
+  immediateAdoptNodes.find((node) => node.id === immediateAdoptItem.id)?.parentNode,
+  immediateAdoptSectionStart.id
+);
+assertParentBeforeChild(immediateAdoptNodes, immediateAdoptSectionStart.id, immediateAdoptItem.id);
+
+const delayedTeleportSectionStart: SyncNode = {
+  ...section,
+  id: "section-delayed-teleport",
+  position: { x: 1000, y: 1000 },
+  width: 300,
+  height: 300,
+  style: toNodeSizeStyle(300, 300),
+  data: { ...section.data, title: "Delayed teleport guard" }
+};
+const delayedTeleportFirstItem: SyncNode = {
+  ...item,
+  id: "item-not-covered-first",
+  position: { x: 260, y: 20 },
+  width: 100,
+  height: 100,
+  style: toNodeSizeStyle(100, 100),
+  data: { ...item.data, title: "Not covered enough" }
+};
+const delayedTeleportSecondItem: SyncNode = {
+  ...item,
+  id: "item-covered-second",
+  position: { x: 630, y: 20 },
+  width: 100,
+  height: 100,
+  style: toNodeSizeStyle(100, 100),
+  data: { ...item.data, title: "Covered second" }
+};
+const delayedTeleportFirstPreviousNodes = cloneNodes([
+  delayedTeleportFirstItem,
+  delayedTeleportSecondItem,
+  delayedTeleportSectionStart
+]);
+const delayedTeleportFirstNodes = cloneNodes([
+  delayedTeleportFirstItem,
+  delayedTeleportSecondItem,
+  { ...delayedTeleportSectionStart, position: { x: 0, y: 0 } }
+]);
+applySectionMembershipForMovedNodes(
+  [{ nodeId: delayedTeleportSectionStart.id }],
+  delayedTeleportFirstNodes,
+  [],
+  delayedTeleportFirstPreviousNodes
+);
+assert.equal(
+  delayedTeleportFirstNodes.find((node) => node.id === delayedTeleportFirstItem.id)?.parentNode,
+  undefined
+);
+
+const delayedTeleportSecondPreviousNodes = cloneNodes(delayedTeleportFirstNodes);
+const delayedTeleportSecondNodes = delayedTeleportFirstNodes.map((node) =>
+  node.id === delayedTeleportSectionStart.id
+    ? { ...node, position: { x: 600, y: 0 } }
+    : JSON.parse(JSON.stringify(node))
+) as SyncNode[];
+applySectionMembershipForMovedNodes(
+  [{ nodeId: delayedTeleportSectionStart.id }],
+  delayedTeleportSecondNodes,
+  [],
+  delayedTeleportSecondPreviousNodes
+);
+assert.equal(
+  delayedTeleportSecondNodes.find((node) => node.id === delayedTeleportSecondItem.id)?.parentNode,
+  delayedTeleportSectionStart.id
+);
+assert.equal(
+  delayedTeleportSecondNodes.find((node) => node.id === delayedTeleportFirstItem.id)?.parentNode,
+  undefined
+);
+
+const immediateSmallSection: SyncNode = {
+  ...section,
+  id: "section-immediate-small",
+  position: { x: 100, y: 100 },
+  width: 180,
+  height: 160,
+  style: toNodeSizeStyle(180, 160),
+  data: { ...section.data, title: "Immediate small" }
+};
+const immediateSmallSectionChild: SyncNode = {
+  ...item,
+  id: "item-inside-immediate-small",
+  parentNode: immediateSmallSection.id,
+  position: { x: 20, y: 20 },
+  width: 80,
+  height: 80,
+  style: toNodeSizeStyle(80, 80),
+  data: { ...item.data, title: "Nested child stays nested" }
+};
+const immediateLargeSectionStart: SyncNode = {
+  ...section,
+  id: "section-immediate-large",
+  position: { x: 1000, y: 1000 },
+  width: 500,
+  height: 420,
+  style: toNodeSizeStyle(500, 420),
+  data: { ...section.data, title: "Immediate large" }
+};
+const immediateSectionPreviousNodes = cloneNodes([
+  immediateSmallSection,
+  immediateSmallSectionChild,
+  immediateLargeSectionStart
+]);
+const immediateSectionNodes = cloneNodes([
+  immediateSmallSection,
+  immediateSmallSectionChild,
+  { ...immediateLargeSectionStart, position: { x: 40, y: 40 } }
+]);
+applySectionMembershipForMovedNodes(
+  [{ nodeId: immediateLargeSectionStart.id }],
+  immediateSectionNodes,
+  [],
+  immediateSectionPreviousNodes
+);
+assert.equal(
+  immediateSectionNodes.find((node) => node.id === immediateSmallSection.id)?.parentNode,
+  immediateLargeSectionStart.id
+);
+assert.equal(
+  immediateSectionNodes.find((node) => node.id === immediateSmallSectionChild.id)?.parentNode,
+  immediateSmallSection.id
+);
+assertParentBeforeChild(immediateSectionNodes, immediateLargeSectionStart.id, immediateSmallSection.id);
+assertParentBeforeChild(immediateSectionNodes, immediateSmallSection.id, immediateSmallSectionChild.id);
+
+const multiMoveSectionStart: SyncNode = {
+  ...section,
+  id: "section-multi-move",
+  position: { x: 1000, y: 1000 },
+  width: 420,
+  height: 360,
+  style: toNodeSizeStyle(420, 360),
+  data: { ...section.data, title: "Multi move" }
+};
+const multiMoveItem: SyncNode = {
+  ...item,
+  id: "item-multi-move",
+  position: { x: 80, y: 80 },
+  width: 120,
+  height: 120,
+  style: toNodeSizeStyle(120, 120),
+  data: { ...item.data, title: "Multi move item" }
+};
+const multiMovePreviousNodes = cloneNodes([multiMoveItem, multiMoveSectionStart]);
+const multiMoveNodes = cloneNodes([
+  { ...multiMoveItem, position: { x: 100, y: 100 } },
+  { ...multiMoveSectionStart, position: { x: 0, y: 0 } }
+]);
+applySectionMembershipForMovedNodes(
+  [{ nodeId: multiMoveSectionStart.id }, { nodeId: multiMoveItem.id }],
+  multiMoveNodes,
+  [],
+  multiMovePreviousNodes
+);
+assert.equal(
+  multiMoveNodes.find((node) => node.id === multiMoveItem.id)?.parentNode,
+  multiMoveSectionStart.id
+);
+assertParentBeforeChild(multiMoveNodes, multiMoveSectionStart.id, multiMoveItem.id);
 
 const shrunkSection = {
   ...section,

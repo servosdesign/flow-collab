@@ -6,6 +6,7 @@ import {
   createGraphCache,
   normalizeEdge,
   normalizeNode,
+  orderNodesByHierarchy,
   sameJson,
   stripParentExtent,
   withContentSizedNode,
@@ -36,7 +37,9 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
     runtime.isApplyingRemote.value = true;
 
     const nextFlow = cloneJson(document);
-    const nextNodes = nextFlow.nodes.map(withContentSizedNode).map(stripParentExtent);
+    const nextNodes = orderNodesByHierarchy(
+      nextFlow.nodes.map(withContentSizedNode).map(stripParentExtent)
+    );
 
     runtime.nodes.value = services.withSelectionState(nextNodes as FlowNode[]);
     runtime.edges.value = withDefaultEdges(
@@ -232,7 +235,8 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
 
     if (nodeComponent && !sameJson(nodeComponent.od, nodeComponent.oi)) {
       const existingNodesById = new Map(runtime.nodes.value.map((node) => [node.id, node]));
-      const nextNodes = document.nodes.map((documentNode) => {
+      const orderedDocumentNodes = orderNodesByHierarchy(document.nodes.map(cloneJson));
+      const nextNodes = orderedDocumentNodes.map((documentNode) => {
         const existingNode = existingNodesById.get(documentNode.id) as FlowNode | undefined;
 
         if (existingNode && movingIds.has(documentNode.id)) {
@@ -248,7 +252,7 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
         changedNodeIds.add(documentNode.id);
         return nextNode;
       });
-      const documentNodeIds = new Set(document.nodes.map((node) => node.id));
+      const documentNodeIds = new Set(orderedDocumentNodes.map((node) => node.id));
 
       runtime.selectedNodeIds.value = new Set(
         Array.from(runtime.selectedNodeIds.value).filter((nodeId) => documentNodeIds.has(nodeId))
@@ -259,7 +263,7 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
     if (edgeComponent && !sameJson(edgeComponent.od, edgeComponent.oi)) {
       runtime.edges.value = withDefaultEdges(
         document.edges,
-        createGraphCache(document.nodes, document.edges)
+        createGraphCache(orderNodesByHierarchy(document.nodes.map(cloneJson)), document.edges)
       );
     }
 
@@ -312,6 +316,7 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
 
     const oldNodes = document.data.nodes;
     const oldEdges = document.data.edges;
+    orderNodesByHierarchy(nextNodes);
     runtime.nodes.value = services.withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[]);
     runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges));
     nextTick(() => {
@@ -341,7 +346,7 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
     }
 
     const snapshot = runtime.toObject();
-    const nextNodes = (snapshot.nodes as FlowNode[]).map(normalizeNode);
+    const nextNodes = orderNodesByHierarchy((snapshot.nodes as FlowNode[]).map(normalizeNode));
     const graph = createGraphCache(nextNodes);
     const nextEdges = (snapshot.edges as FlowEdge[]).map((edge) => normalizeEdge(edge, graph));
     const nextViewport = snapshot.viewport;
@@ -376,10 +381,11 @@ export function useRealtimeSync(runtime: FlowRuntime, services: FlowEditorServic
   }
 
   function documentMatchesLocal(document: SyncFlowDocument) {
-    const localNodes = services.getCurrentSyncNodes();
+    const localNodes = orderNodesByHierarchy(services.getCurrentSyncNodes());
+    const documentNodes = orderNodesByHierarchy(cloneJson(document.nodes));
     const localEdges = services.getCurrentSyncEdges(localNodes);
 
-    return sameJson(document.nodes, localNodes) && sameJson(document.edges, localEdges);
+    return sameJson(documentNodes, localNodes) && sameJson(document.edges, localEdges);
   }
 
   function scheduleGraphSnapshot(delay = 250) {
