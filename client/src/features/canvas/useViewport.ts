@@ -2,6 +2,15 @@ import type { FlowRuntime } from '../../flowRuntime'
 
 type ViewportLike = { x: number, y: number, zoom: number }
 type MovePayload = { flowTransform?: ViewportLike } | ViewportLike
+const viewportEpsilon = 0.001
+
+const hasViewportChanged = (current: ViewportLike, next: ViewportLike) => {
+  return (
+    Math.abs(current.x - next.x) > viewportEpsilon ||
+    Math.abs(current.y - next.y) > viewportEpsilon ||
+    Math.abs(current.zoom - next.zoom) > viewportEpsilon
+  )
+}
 
 export const useViewport = (runtime: FlowRuntime) => {
   const updateCanvasSize = () => {
@@ -64,13 +73,22 @@ export const useViewport = (runtime: FlowRuntime) => {
   }
 
   const refreshSelectionBounds = (payload?: MovePayload) => {
-    runtime.currentViewport.value = getViewportFromPayload(payload)
+    const nextViewport = getViewportFromPayload(payload)
+    const viewportChanged = hasViewportChanged(runtime.currentViewport.value, nextViewport)
 
-    if (runtime.interaction.selectionMoveDrag) {
+    if (viewportChanged) {
+      runtime.currentViewport.value = {
+        x: nextViewport.x,
+        y: nextViewport.y,
+        zoom: nextViewport.zoom
+      }
+    }
+
+    if (viewportChanged && runtime.interaction.selectionMoveDrag) {
       runtime.interaction.scheduleSelectionMoveFrame?.()
     }
 
-    if (needsViewportSelectionBoundsRefresh()) {
+    if (viewportChanged && needsViewportSelectionBoundsRefresh()) {
       scheduleSelectionBoundsRefresh()
     }
   }

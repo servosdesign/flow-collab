@@ -103,7 +103,6 @@
   background:
     linear-gradient(135deg, rgb(236 253 245 / 78%), rgb(240 249 255 / 76%)),
     rgb(255 255 255 / 72%);
-  backdrop-filter: blur(2px);
 }
 
 .section-port {
@@ -325,6 +324,7 @@
   background: #eef3f8;
   user-select: none;
   -webkit-user-drag: none;
+  contain: paint;
 }
 
 .lod-node-preview img {
@@ -338,6 +338,7 @@
   border: 1px solid #dbe2ea;
   border-radius: 6px;
   background: #f8fafc;
+  contain: layout paint style;
 }
 
 .bars-widget {

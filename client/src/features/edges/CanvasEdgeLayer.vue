@@ -97,6 +97,33 @@ type CanvasLayoutState = {
   pixelHeight: number
 }
 
+type CanvasDrawWindow = {
+  left: number
+  top: number
+  width: number
+  height: number
+  zoom: number
+  viewportWidth: number
+  viewportHeight: number
+  ratio: number
+  renderScale: number
+  pixelWidth: number
+  pixelHeight: number
+  padding: number
+}
+
+type ViewportMetrics = {
+  visibleLeft: number
+  visibleTop: number
+  visibleWidth: number
+  visibleHeight: number
+  zoom: number
+  viewportWidth: number
+  viewportHeight: number
+  ratio: number
+  padding: number
+}
+
 const edgeRenderCache = new Map<string, CachedEdgeRender>()
 const canvasLayoutState: CanvasLayoutState = {
   positioned: false,
@@ -106,8 +133,11 @@ const canvasLayoutState: CanvasLayoutState = {
   pixelWidth: 0,
   pixelHeight: 0
 }
+let canvasDrawWindow: CanvasDrawWindow | null = null
 
 const roundLayoutValue = (value: number) => Math.round(value * 1000) / 1000
+const zoomEpsilon = 0.0001
+const drawWindowRedrawRatio = 0.5
 
 const roundGeometryValue = (value: number | undefined) => {
   return typeof value === 'number' && Number.isFinite(value) ? Math.round(value) : ''
@@ -295,23 +325,87 @@ const scheduleDraw = () => {
   drawFrame = window.requestAnimationFrame(drawCanvas)
 }
 
-const syncCanvasSize = (canvas: HTMLCanvasElement) => {
+const getViewportMetrics = (): ViewportMetrics => {
   const view = viewport.value
   const zoom = Math.max(0.001, view.zoom)
   const viewportWidth = Math.max(1, dimensions.value.width)
   const viewportHeight = Math.max(1, dimensions.value.height)
   const padding = viewportCullPadding / zoom
-  const left = roundLayoutValue(-view.x / zoom - padding)
-  const top = roundLayoutValue(-view.y / zoom - padding)
-  const width = roundLayoutValue(viewportWidth / zoom + padding * 2)
-  const height = roundLayoutValue(viewportHeight / zoom + padding * 2)
   const ratio = Math.min(maxDevicePixelRatio, Math.max(1, window.devicePixelRatio || 1))
-  const renderScale = ratio * zoom
+  const visibleLeft = -view.x / zoom
+  const visibleTop = -view.y / zoom
+
+  return {
+    visibleLeft,
+    visibleTop,
+    visibleWidth: viewportWidth / zoom,
+    visibleHeight: viewportHeight / zoom,
+    zoom,
+    viewportWidth,
+    viewportHeight,
+    ratio,
+    padding
+  }
+}
+
+const createCanvasDrawWindow = (metrics = getViewportMetrics()): CanvasDrawWindow => {
+  const left = roundLayoutValue(metrics.visibleLeft - metrics.padding)
+  const top = roundLayoutValue(metrics.visibleTop - metrics.padding)
+  const width = roundLayoutValue(metrics.visibleWidth + metrics.padding * 2)
+  const height = roundLayoutValue(metrics.visibleHeight + metrics.padding * 2)
+  const renderScale = metrics.ratio * metrics.zoom
   const pixelWidth = Math.max(1, Math.round(width * renderScale))
   const pixelHeight = Math.max(1, Math.round(height * renderScale))
-  const transform = `translate3d(${left}px, ${top}px, 0)`
-  const cssWidth = `${width}px`
-  const cssHeight = `${height}px`
+
+  return {
+    left,
+    top,
+    width,
+    height,
+    zoom: metrics.zoom,
+    viewportWidth: metrics.viewportWidth,
+    viewportHeight: metrics.viewportHeight,
+    ratio: metrics.ratio,
+    renderScale,
+    pixelWidth,
+    pixelHeight,
+    padding: metrics.padding
+  }
+}
+
+const doesViewportFitDrawWindow = (
+  drawWindow: CanvasDrawWindow,
+  metrics = getViewportMetrics()
+) => {
+  if (
+    Math.abs(drawWindow.zoom - metrics.zoom) > zoomEpsilon ||
+    drawWindow.viewportWidth !== metrics.viewportWidth ||
+    drawWindow.viewportHeight !== metrics.viewportHeight ||
+    drawWindow.ratio !== metrics.ratio
+  ) {
+    return false
+  }
+
+  const redrawInset = metrics.padding * drawWindowRedrawRatio
+  const visibleRight = metrics.visibleLeft + metrics.visibleWidth
+  const visibleBottom = metrics.visibleTop + metrics.visibleHeight
+
+  return (
+    metrics.visibleLeft >= drawWindow.left + redrawInset &&
+    metrics.visibleTop >= drawWindow.top + redrawInset &&
+    visibleRight <= drawWindow.left + drawWindow.width - redrawInset &&
+    visibleBottom <= drawWindow.top + drawWindow.height - redrawInset
+  )
+}
+
+const needsCanvasDrawWindowRefresh = () => {
+  return !canvasDrawWindow || !doesViewportFitDrawWindow(canvasDrawWindow)
+}
+
+const applyCanvasDrawWindow = (canvas: HTMLCanvasElement, drawWindow: CanvasDrawWindow) => {
+  const transform = `translate3d(${drawWindow.left}px, ${drawWindow.top}px, 0)`
+  const cssWidth = `${drawWindow.width}px`
+  const cssHeight = `${drawWindow.height}px`
 
   if (!canvasLayoutState.positioned) {
     canvas.style.left = '0'
@@ -334,23 +428,25 @@ const syncCanvasSize = (canvas: HTMLCanvasElement) => {
     canvasLayoutState.height = cssHeight
   }
 
-  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-    canvas.width = pixelWidth
-    canvas.height = pixelHeight
-    canvasLayoutState.pixelWidth = pixelWidth
-    canvasLayoutState.pixelHeight = pixelHeight
+  if (canvas.width !== drawWindow.pixelWidth || canvas.height !== drawWindow.pixelHeight) {
+    canvas.width = drawWindow.pixelWidth
+    canvas.height = drawWindow.pixelHeight
+    canvasLayoutState.pixelWidth = drawWindow.pixelWidth
+    canvasLayoutState.pixelHeight = drawWindow.pixelHeight
   } else {
-    canvasLayoutState.pixelWidth = pixelWidth
-    canvasLayoutState.pixelHeight = pixelHeight
+    canvasLayoutState.pixelWidth = drawWindow.pixelWidth
+    canvasLayoutState.pixelHeight = drawWindow.pixelHeight
+  }
+}
+
+const syncCanvasDrawWindow = (canvas: HTMLCanvasElement) => {
+  if (!canvasDrawWindow || !doesViewportFitDrawWindow(canvasDrawWindow)) {
+    canvasDrawWindow = createCanvasDrawWindow()
   }
 
-  return {
-    left,
-    top,
-    width,
-    height,
-    renderScale
-  }
+  applyCanvasDrawWindow(canvas, canvasDrawWindow)
+
+  return canvasDrawWindow
 }
 
 const getEdgePaintStyle = (edge: GraphEdge) : EdgePaintStyle => {
@@ -661,7 +757,7 @@ const drawCanvas = () => {
     return
   }
 
-  const { left, top, width, height, renderScale } = syncCanvasSize(canvas)
+  const { left, top, width, height, renderScale } = syncCanvasDrawWindow(canvas)
   let hasAnimatedEdges = false
   const edges = getEdges.value
 
@@ -741,7 +837,11 @@ watch(
     dimensions.value.width,
     dimensions.value.height
   ],
-  scheduleDraw,
+  () => {
+    if (needsCanvasDrawWindowRefresh()) {
+      scheduleDraw()
+    }
+  },
   { flush: 'post', immediate: true }
 )
 
@@ -759,6 +859,7 @@ onBeforeUnmount(() => {
     window.cancelAnimationFrame(drawFrame)
     drawFrame = undefined
   }
+  canvasDrawWindow = null
 })
 </script>
 

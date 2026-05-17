@@ -10,7 +10,6 @@ import '@vue-flow/core/dist/theme-default.css'
 import { useFlowGraphContext } from '../../app/flowEditorContext'
 import CanvasEdgeLayer from '../edges/CanvasEdgeLayer.vue'
 import ConnectionPreviewLine from '../edges/ConnectionPreviewLine.vue'
-import FlowGridBackground from './FlowGridBackground.vue'
 import FlowItemNodeSlot from './FlowItemNodeSlot.vue'
 import FlowMiniMap from './FlowMiniMap.vue'
 import FlowSectionNodeSlot from './FlowSectionNodeSlot.vue'
@@ -103,7 +102,6 @@ const {
       />
     </template>
 
-    <FlowGridBackground />
     <FlowMiniMap />
   </VueFlow>
 </template>
