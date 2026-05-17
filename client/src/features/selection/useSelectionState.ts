@@ -2,6 +2,7 @@ import { nextTick, watch } from 'vue'
 import type { FlowEditorServices } from '../../app/flowEditorServices'
 import type { FlowEdge } from '../../domain/graph'
 import type { FlowRuntime } from '../../flowRuntime'
+import { getNodeElementById } from './selectionDom'
 
 type SelectionUpdateOptions = {
   deferEffects?: boolean
@@ -27,18 +28,6 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
   let selectedRootClassIds = new Set<string>()
   let selectedRootClassFrame: number | undefined
 
-  const escapeCssAttributeValue = (value: string) => value
-    .replace(/\\/g, '\\\\')
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, '\\a ')
-    .replace(/\r/g, '\\d ')
-
-  const getNodeElementById = (nodeId: string) => {
-    const selector = `.vue-flow__node[data-id="${escapeCssAttributeValue(nodeId)}"]`
-
-    return runtime.canvasPanel.value?.querySelector<HTMLElement>(selector) ?? null
-  }
-
   const syncSelectedRootClasses = () => {
     selectedRootClassFrame = undefined
 
@@ -46,12 +35,12 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
 
     selectedRootClassIds.forEach((nodeId) => {
       if (!nextIds.has(nodeId)) {
-        getNodeElementById(nodeId)?.classList.remove(selectionSelectedClass)
+        getNodeElementById(runtime, nodeId)?.classList.remove(selectionSelectedClass)
       }
     })
 
     nextIds.forEach((nodeId) => {
-      getNodeElementById(nodeId)?.classList.add(selectionSelectedClass)
+      getNodeElementById(runtime, nodeId)?.classList.add(selectionSelectedClass)
     })
 
     selectedRootClassIds = new Set(nextIds)
@@ -201,7 +190,7 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
       selectedRootClassFrame = undefined
     }
     selectedRootClassIds.forEach((nodeId) => {
-      getNodeElementById(nodeId)?.classList.remove(selectionSelectedClass)
+      getNodeElementById(runtime, nodeId)?.classList.remove(selectionSelectedClass)
     })
     selectedRootClassIds = new Set()
   }
