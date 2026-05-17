@@ -8,6 +8,7 @@ import {
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import { useFlowGraphContext } from '../../app/flowEditorContext'
+import CanvasEdgeLayer from '../edges/CanvasEdgeLayer.vue'
 import ConnectionPreviewLine from '../edges/ConnectionPreviewLine.vue'
 import FlowGridBackground from './FlowGridBackground.vue'
 import FlowItemNodeSlot from './FlowItemNodeSlot.vue'
@@ -15,6 +16,7 @@ import FlowMiniMap from './FlowMiniMap.vue'
 import FlowSectionNodeSlot from './FlowSectionNodeSlot.vue'
 
 const nodeSnapGrid: [number, number] = [1, 1]
+const useCanvasEdges = import.meta.env.VITE_FLOW_EDGE_RENDERER !== 'svg'
 
 const {
   edges,
@@ -32,6 +34,7 @@ const {
     v-model:nodes="nodes"
     v-model:edges="edges"
     class="flow-canvas"
+    :class="{ 'canvas-edge-renderer': useCanvasEdges }"
     :connection-line-type="ConnectionLineType.Step"
     :connection-line-options="{
       type: ConnectionLineType.Step,
@@ -78,6 +81,10 @@ const {
     @selection-drag="events.handleSelectionDrag"
     @selection-drag-stop="events.handleSelectionDragStop"
   >
+    <template #zoom-pane>
+      <CanvasEdgeLayer v-if="useCanvasEdges" />
+    </template>
+
     <template #connection-line="connectionLineProps">
       <ConnectionPreviewLine v-bind="connectionLineProps" />
     </template>
