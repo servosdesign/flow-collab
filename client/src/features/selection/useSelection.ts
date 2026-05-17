@@ -73,6 +73,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
     getSelectedClientBounds,
     isPointInsideSelectedBounds,
     isSingleNodeSelection,
+    selectedNodeOutlineRects,
     selectedBoundsStyle
   } = selectionOverlay
 
@@ -107,8 +108,10 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
   const selectionState = useSelectionState(runtime, services)
   const {
     clearNodeSelection,
+    cleanupSelectionState,
     getSelectedNodeIds,
     isNodeSelected,
+    isNodeVisuallySelected,
     selectOnlyNode,
     setSelectedNodes
   } = selectionState
@@ -892,6 +895,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
     clearLassoPreview()
     removeLassoSelectionBox()
     clearPendingNodePressSelection()
+    cleanupSelectionState()
   }
 
   return {
@@ -912,10 +916,12 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
     handleSelectedBoundsPointerDown: selectionMove.handleSelectedBoundsPointerDown,
     isCanvasSelectionTarget,
     isNodeSelected,
+    isNodeVisuallySelected,
     isSingleNodeSelection,
     lassoPreviewRects,
     selectOnlyNode,
     selectionMovePreview: selectionMove.selectionMovePreview,
+    selectedNodeOutlineRects,
     selectedBoundsStyle,
     setSelectedNodes: setSelectedNodesImmediate
   }

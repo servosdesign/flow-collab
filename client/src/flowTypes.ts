@@ -34,6 +34,7 @@ export type CanvasClientBounds = {
 }
 
 export type SelectionMoveDragMode = 'visible' | 'bundle'
+export type SelectionMovePresentationStrategy = 'origin-mask' | 'element-classes'
 export type SelectionMovePreviewShapeKind = 'item' | 'section'
 
 export type SelectionMovePreviewCounts = {
@@ -70,6 +71,7 @@ export type SelectionMoveRuntimeSnapshot = {
 
 export type SelectionMoveDrag = {
   mode: SelectionMoveDragMode
+  presentationStrategy: SelectionMovePresentationStrategy
   startViewport: FlowViewport
   startClientX: number
   startClientY: number
@@ -107,6 +109,9 @@ export type FlowTimers = {
   graphCommitTimer?: number
   cursorCommitTimer?: number
   resizeCommitTimer?: number
+  selectionMoveCommitFrame?: number
+  selectionMoveCommitTimer?: number
+  selectionMoveCommitFallbackTimer?: number
   pendingResizeCommit?: { nodeId: string, params: ResizeParams }
   pendingCursor?: { x: number, y: number }
   selectionBoundsFrame?: number
@@ -136,6 +141,8 @@ export type FlowAppState = {
   currentViewport: Ref<FlowViewport>
   rightSelection: Ref<DragSelection | null>
   selectedNodeIds: Ref<Set<string>>
+  selectedNodeLookup: Record<string, true | undefined>
+  selectedNodeVisualLookup: Record<string, true | undefined>
   selectionMoveHiddenNodeIds: Ref<Set<string>>
   selectionMoveHiddenEdgeIds: Ref<Set<string>>
   selectionMovePreviewVersion: Ref<number>

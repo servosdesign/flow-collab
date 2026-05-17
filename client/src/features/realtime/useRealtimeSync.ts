@@ -1,6 +1,7 @@
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import type { SyncEdge, SyncFlowDocument, SyncNode } from '@vue-flow-sync/shared'
 import type { JsonOp } from 'sharedb/lib/client'
+import { resetSeedFlow } from '../../api'
 import {
   cloneJson,
   createGraphCache,
@@ -19,6 +20,7 @@ import type { FlowRuntime } from '../../flowRuntime'
 
 export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServices) => {
   const granularNodeFields = new Set(['data', 'style', 'width', 'height', 'position'])
+  const isResettingFlow = ref(false)
 
   const toRuntimeNode = (documentNode: SyncNode) => {
     return services.withSelectionState([
@@ -397,11 +399,44 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
     window.clearTimeout(runtime.timers.graphCommitTimer)
   }
 
+  const resetFlowToSeed = async () => {
+    if (isResettingFlow.value) {
+      return
+    }
+
+    window.clearTimeout(runtime.timers.graphCommitTimer)
+    runtime.timers.graphCommitTimer = undefined
+    isResettingFlow.value = true
+    runtime.isFlowLoading.value = true
+    runtime.errorMessage.value = ''
+    runtime.pendingCreate.value = null
+    runtime.selectedNodeIds.value = new Set()
+    runtime.status.value = 'Resetting'
+    services.closeContextMenu()
+    services.updatePresenceSelection()
+
+    try {
+      const flow = await resetSeedFlow('main')
+
+      applyFlowDocument(flow)
+      runtime.status.value = 'Live'
+    } catch (error) {
+      runtime.errorMessage.value =
+        error instanceof Error ? error.message : 'Could not reset the flowchart.'
+      runtime.isFlowLoading.value = false
+      runtime.status.value = 'Error'
+    } finally {
+      isResettingFlow.value = false
+    }
+  }
+
   return {
     applyFlowDocument,
     applyRemoteOperation,
     cleanupRealtimeSync,
     documentMatchesLocal,
+    isResettingFlow,
+    resetFlowToSeed,
     scheduleGraphSnapshot,
     submitGraphReplacement,
     submitGraphSnapshot,

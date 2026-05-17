@@ -2,7 +2,8 @@ import { computed } from 'vue'
 import type { FlowEditorServices } from '../../app/flowEditorServices'
 import {
   createGraphCache,
-  getNodeBounds
+  getNodeBounds,
+  getRenderedNodeBounds
 } from '../../domain/graph'
 import type { FlowRuntime } from '../../flowRuntime'
 
@@ -108,6 +109,45 @@ export const useSelectionOverlayModel = (
 
   const isSingleNodeSelection = computed(() => runtime.selectedNodeIds.value.size <= 1)
 
+  const selectedNodeOutlineRects = computed<Array<{ id: string, style: Record<string, string> }>>(() => {
+    if (
+      !runtime.isLoggedIn.value ||
+      runtime.rightSelection.value ||
+      runtime.isLassoSelecting.value ||
+      runtime.isMovingSelection.value ||
+      runtime.selectedNodeIds.value.size < 2
+    ) {
+      return []
+    }
+
+    void runtime.selectionBoundsVersion.value
+    const selectedIds = runtime.selectedNodeIds.value
+    const viewport = runtime.currentViewport.value
+    const graphNodes = services.getCurrentSyncNodes()
+    const graph = createGraphCache(graphNodes)
+    const rects: Array<{ id: string, style: Record<string, string> }> = []
+
+    for (const node of graphNodes) {
+      if (!selectedIds.has(node.id) || node.type === 'section') {
+        continue
+      }
+
+      const bounds = getRenderedNodeBounds(node, graph)
+
+      rects.push({
+        id: node.id,
+        style: {
+          left: `${bounds.x * viewport.zoom + viewport.x}px`,
+          top: `${bounds.y * viewport.zoom + viewport.y}px`,
+          width: `${bounds.width * viewport.zoom}px`,
+          height: `${bounds.height * viewport.zoom}px`
+        }
+      })
+    }
+
+    return rects
+  })
+
   const getSelectedClientBounds = () => {
     const style = selectedBoundsStyle.value
     const panelRect = runtime.canvasPanel.value?.getBoundingClientRect()
@@ -149,6 +189,7 @@ export const useSelectionOverlayModel = (
     getSelectedClientBounds,
     isPointInsideSelectedBounds,
     isSingleNodeSelection,
+    selectedNodeOutlineRects,
     selectedBoundsStyle
   }
 }

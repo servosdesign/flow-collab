@@ -63,10 +63,6 @@ export const useGraphState = (runtime: FlowRuntime) => {
         classNames.push('nested-flow-node')
       }
 
-      if (runtime.selectedNodeIds.value.has(node.id)) {
-        classNames.push('selection-selected-node')
-      }
-
       const className = classNames.join(' ')
 
       if (

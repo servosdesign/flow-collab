@@ -1,4 +1,4 @@
-import { createEmptyPresence, createSeedFlow } from '@vue-flow-sync/shared'
+import { createEmptyPresence, createSeedFlow, type SyncFlowDocument } from '@vue-flow-sync/shared'
 import WebSocketJSONStream from '@teamwork/websocket-json-stream'
 import ShareDB from 'sharedb'
 import sharedbMongo from 'sharedb-mongo'
@@ -12,11 +12,14 @@ type ShareDocumentWithSubmit = {
   type: unknown
   data: unknown
   fetch(callback: (error?: Error) => void): void
+  create(data: unknown, callback: (error?: Error) => void): void
   submitOp(
     operation: Array<{ p: Array<string | number>, od?: unknown, oi?: unknown }>,
     callback: (error?: Error) => void
   ): void
 }
+
+type JsonReplaceOperation = Array<{ p: Array<string | number>, od?: unknown, oi?: unknown }>
 
 const createBackend = () => {
   const db = sharedbMongo(config.mongoUri, {
@@ -28,32 +31,28 @@ const createBackend = () => {
   return new ShareDB({ db })
 }
 
-const ensureDocument = async <T>(
-  backend: ShareDB,
-  collection: string,
-  id: string,
-  createData: () => T
-) => {
-  const connection = backend.connect()
-  const document = connection.get(collection, id)
+const backend = createBackend()
 
-  await new Promise<void>((resolve, reject) => {
+const getSeedImageUrls = () => {
+  const uploadRoot = path.resolve(config.uploadDir)
+
+  return fs.existsSync(uploadRoot)
+    ? fs
+      .readdirSync(uploadRoot)
+      .filter((file) => /\.(avif|gif|jpe?g|png|webp)$/i.test(file))
+      .map((file) => `http://localhost:${config.port}/uploads/${file}`)
+    : []
+}
+
+const createSeedFlowFromUploads = () => createSeedFlow(getSeedImageUrls())
+
+const sameJson = (first: unknown, second: unknown) => {
+  return JSON.stringify(first) === JSON.stringify(second)
+}
+
+const fetchDocument = (document: Pick<ShareDocumentWithSubmit, 'fetch'>) => {
+  return new Promise<void>((resolve, reject) => {
     document.fetch((error?: Error) => {
-      if (error) {
-        reject(error)
-        return
-      }
-
-      resolve()
-    })
-  })
-
-  if (document.type) {
-    return
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    document.create(createData(), (error?: Error) => {
       if (error) {
         reject(error)
         return
@@ -64,17 +63,102 @@ const ensureDocument = async <T>(
   })
 }
 
-const ensureMainDocuments = async (backend: ShareDB) => {
-  const uploadRoot = path.resolve(config.uploadDir)
-  const imageUrls = fs.existsSync(uploadRoot)
-    ? fs
-      .readdirSync(uploadRoot)
-      .filter((file) => /\.(avif|gif|jpe?g|png|webp)$/i.test(file))
-      .map((file) => `http://localhost:${config.port}/uploads/${file}`)
-    : []
+const createDocument = (
+  document: Pick<ShareDocumentWithSubmit, 'create'>,
+  data: unknown
+) => {
+  return new Promise<void>((resolve, reject) => {
+    document.create(data, (error?: Error) => {
+      if (error) {
+        reject(error)
+        return
+      }
 
-  await ensureDocument(backend, 'flows', 'main', () => createSeedFlow(imageUrls))
+      resolve()
+    })
+  })
+}
+
+const submitDocumentOperation = (
+  document: Pick<ShareDocumentWithSubmit, 'submitOp'>,
+  operation: JsonReplaceOperation
+) => {
+  return new Promise<void>((resolve, reject) => {
+    document.submitOp(operation, (error?: Error) => {
+      if (error) {
+        reject(error)
+        return
+      }
+
+      resolve()
+    })
+  })
+}
+
+const ensureDocument = async <T>(
+  backend: ShareDB,
+  collection: string,
+  id: string,
+  createData: () => T
+) => {
+  const connection = backend.connect()
+  const document = connection.get(collection, id)
+
+  await fetchDocument(document)
+
+  if (document.type) {
+    return
+  }
+
+  await createDocument(document, createData())
+}
+
+const ensureMainDocuments = async (backend: ShareDB) => {
+  await ensureDocument(backend, 'flows', 'main', createSeedFlowFromUploads)
   await ensureDocument(backend, 'presence', 'main', createEmptyPresence)
+}
+
+export const resetSeedFlowDocument = async (id: string) => {
+  const connection = backend.connect()
+  const document = connection.get('flows', id) as unknown as ShareDocumentWithSubmit
+  const nextFlow = createSeedFlowFromUploads()
+
+  await fetchDocument(document)
+
+  if (!document.type) {
+    await createDocument(document, nextFlow)
+    return nextFlow
+  }
+
+  const currentFlow = document.data as Partial<SyncFlowDocument>
+  const operation = [
+    currentFlow.name !== nextFlow.name && {
+      p: ['name'],
+      od: currentFlow.name,
+      oi: nextFlow.name
+    },
+    !sameJson(currentFlow.nodes, nextFlow.nodes) && {
+      p: ['nodes'],
+      od: currentFlow.nodes,
+      oi: nextFlow.nodes
+    },
+    !sameJson(currentFlow.edges, nextFlow.edges) && {
+      p: ['edges'],
+      od: currentFlow.edges,
+      oi: nextFlow.edges
+    },
+    !sameJson(currentFlow.viewport, nextFlow.viewport) && {
+      p: ['viewport'],
+      od: currentFlow.viewport,
+      oi: nextFlow.viewport
+    }
+  ].filter(Boolean) as JsonReplaceOperation
+
+  if (operation.length > 0) {
+    await submitDocumentOperation(document, operation)
+  }
+
+  return nextFlow
 }
 
 const wait = (milliseconds: number) => {
@@ -152,8 +236,6 @@ const startPresenceCleanup = (backend: ShareDB) => {
 }
 
 export const attachRealtime = async (server: Server) => {
-  const backend = createBackend()
-
   await waitForMainFlow(backend)
   startPresenceCleanup(backend)
 

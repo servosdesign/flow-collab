@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useVueFlow, type GraphNode } from '@vue-flow/core'
+import { useVueFlow, type GraphNode, type NodeChange } from '@vue-flow/core'
 import { useMiniMapContext } from '../../app/flowEditorContext'
 
 type Rect = {
@@ -19,16 +19,11 @@ type MiniMapNodeSnapshot = Rect & {
   id: string
   type: string
   hidden: boolean
-  fillColor: string
-  strokeColor: string
-  strokeWidth: number
 }
 
 type MiniMapSnapshot = {
   nodes: MiniMapNodeSnapshot[]
   bounds: Rect | null
-  contentSignature: string
-  selectionSignature: string
 }
 
 const props = withDefaults(defineProps<{
@@ -47,6 +42,8 @@ const maskStrokeColor = '#94a3b8'
 const viewportStrokeColor = '#1a73e8'
 const clickMovementThreshold = 4
 const wheelZoomStep = 0.002
+const maxDevicePixelRatio = 2
+const nodeStrokeWidth = 4
 
 const nodeCanvasElement = ref<HTMLCanvasElement | null>(null)
 const overlayCanvasElement = ref<HTMLCanvasElement | null>(null)
@@ -59,9 +56,7 @@ let lastDrawnViewBox: Rect | null = null
 let lastCanvasSize: CanvasSize | null = null
 let cachedMiniMapSnapshot: MiniMapSnapshot = {
   nodes: [],
-  bounds: null,
-  contentSignature: '',
-  selectionSignature: ''
+  bounds: null
 }
 let miniMapDrag: {
   pointerId: number
@@ -76,7 +71,10 @@ const {
   dimensions: flowDimensions,
   maxZoom,
   minZoom,
+  nodeLookup,
   nodes,
+  onNodesChange,
+  onNodesInitialized,
   setViewport,
   viewport
 } = useVueFlow()
@@ -96,8 +94,6 @@ const rootStyle = computed(() => ({
 
 const buildMiniMapSnapshot = () : MiniMapSnapshot => {
   const snapshots: MiniMapNodeSnapshot[] = []
-  const contentSignatureParts: string[] = []
-  const selectionSignatureParts: string[] = []
   let bounds: Rect | null = null
 
   for (const node of nodes.value) {
@@ -107,47 +103,22 @@ const buildMiniMapSnapshot = () : MiniMapSnapshot => {
 
     const rect = nodeRect(node)
     const hidden = node.hidden === true
-    const fillColor = getMiniMapNodeColor(node)
-    const strokeColor = getMiniMapNodeStroke(node)
 
     snapshots.push({
       id: node.id,
       type: node.type ?? '',
       hidden,
-      fillColor,
-      strokeColor,
-      strokeWidth: 4,
       ...rect
     })
 
     if (!hidden) {
       bounds = bounds ? unionRect(bounds, rect) : rect
     }
-
-    contentSignatureParts.push(
-      [
-        node.id,
-        rect.x,
-        rect.y,
-        rect.width,
-        rect.height,
-        hidden ? 1 : 0,
-        node.type ?? '',
-        fillColor,
-        strokeColor
-      ].join(',')
-    )
-
-    if (node.selected) {
-      selectionSignatureParts.push(node.id)
-    }
   }
 
   return {
     nodes: snapshots,
-    bounds,
-    contentSignature: contentSignatureParts.join('|'),
-    selectionSignature: selectionSignatureParts.join('|')
+    bounds
   }
 }
 
@@ -162,8 +133,16 @@ const getMiniMapSnapshot = () => {
 
 const queueNodeLayerDraw = () => {
   nodeLayerDirty = true
-  overlayLayerDirty = true
   queueDraw()
+}
+
+const markNodePaintDirty = () => {
+  if (isDropSettling.value) {
+    deferredNodeLayerDirty = true
+    return
+  }
+
+  queueNodeLayerDraw()
 }
 
 const markNodeLayerDirty = () => {
@@ -220,7 +199,7 @@ const flushDraw = () => {
   const canvasSizeChanged =
     lastCanvasSize === null || !canvasSizesEqual(lastCanvasSize, canvasSize)
   const shouldDrawNodes = nodeLayerDirty || viewBoxChanged || canvasSizeChanged
-  const shouldDrawOverlay = overlayLayerDirty || shouldDrawNodes
+  const shouldDrawOverlay = overlayLayerDirty || viewBoxChanged || canvasSizeChanged
 
   if (shouldDrawNodes) {
     drawNodeLayer(viewBox, canvasSize)
@@ -264,14 +243,19 @@ const drawNode = (
     return
   }
 
-  const strokeWidth = Math.max(0.75, (node.strokeWidth / viewBox.width) * canvasSize.width)
+  const paintNode = {
+    id: node.id,
+    type: node.type,
+    selected: selectedNodeIds.value.has(node.id) || nodeLookup.value.get(node.id)?.selected === true
+  }
+  const strokeWidth = Math.max(0.75, (nodeStrokeWidth / viewBox.width) * canvasSize.width)
 
   ctx.save()
   ctx.beginPath()
   ctx.rect(canvasRect.x, canvasRect.y, canvasRect.width, canvasRect.height)
-  ctx.fillStyle = node.fillColor
+  ctx.fillStyle = getMiniMapNodeColor(paintNode)
   ctx.fill()
-  ctx.strokeStyle = node.strokeColor
+  ctx.strokeStyle = getMiniMapNodeStroke(paintNode)
   ctx.lineWidth = strokeWidth
   ctx.stroke()
   ctx.restore()
@@ -311,7 +295,7 @@ const prepareCanvas = (canvas: HTMLCanvasElement | null, canvasSize: CanvasSize)
     return null
   }
 
-  const pixelRatio = window.devicePixelRatio || 1
+  const pixelRatio = Math.min(maxDevicePixelRatio, Math.max(1, window.devicePixelRatio || 1))
   const backingWidth = Math.round(canvasSize.width * pixelRatio)
   const backingHeight = Math.round(canvasSize.height * pixelRatio)
 
@@ -588,8 +572,39 @@ const handleWheel = (event: WheelEvent) => {
   void centerViewportOn(centerX, centerY, nextZoom)
 }
 
+const hasGeometryNodeChange = (changes: NodeChange[]) => {
+  return changes.some((change) =>
+    change.type === 'dimensions' ||
+    change.type === 'position' ||
+    change.type === 'add' ||
+    change.type === 'remove'
+  )
+}
+
+const hasSelectionNodeChange = (changes: NodeChange[]) => {
+  return changes.some((change) => change.type === 'select')
+}
+
+const handleNodesChange = (changes: NodeChange[]) => {
+  if (hasGeometryNodeChange(changes)) {
+    markNodeLayerDirty()
+    return
+  }
+
+  if (hasSelectionNodeChange(changes)) {
+    markNodePaintDirty()
+  }
+}
+
+const handleNodesInitialized = () => {
+  markNodeLayerDirty()
+}
+
+const nodesChangeSubscription = onNodesChange(handleNodesChange)
+const nodesInitializedSubscription = onNodesInitialized(handleNodesInitialized)
+
 watch(nodes, markNodeLayerDirty, { flush: 'post' })
-watch(selectedNodeIds, markNodeLayerDirty, { flush: 'post' })
+watch(selectedNodeIds, markNodePaintDirty, { flush: 'post' })
 
 watch(
   () => [isDropSettling.value, dropSettleVersion.value],
@@ -621,6 +636,8 @@ onBeforeUnmount(() => {
   if (drawFrame) {
     window.cancelAnimationFrame(drawFrame)
   }
+  nodesChangeSubscription.off()
+  nodesInitializedSubscription.off()
 })
 </script>
 

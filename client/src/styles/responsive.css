@@ -2,10 +2,26 @@
   .topbar {
     height: auto;
     grid-template-columns: 1fr;
+    gap: 10px;
     padding: 12px;
   }
 
+  .flow-summary,
+  .topbar-actions {
+    justify-content: flex-start;
+  }
+
+  .topbar-actions {
+    flex-wrap: wrap;
+  }
+
+  .create-toolbar {
+    width: calc(100% - 24px);
+    justify-content: center;
+    bottom: 12px;
+  }
+
   .canvas-panel {
-    min-height: calc(100vh - 82px);
+    min-height: calc(100vh - 116px);
   }
 }

@@ -1,6 +1,6 @@
-import { nextTick } from 'vue'
+import { nextTick, watch } from 'vue'
 import type { FlowEditorServices } from '../../app/flowEditorServices'
-import type { FlowEdge, FlowNode } from '../../domain/graph'
+import type { FlowEdge } from '../../domain/graph'
 import type { FlowRuntime } from '../../flowRuntime'
 
 type SelectionUpdateOptions = {
@@ -9,6 +9,7 @@ type SelectionUpdateOptions = {
 }
 
 const deferredSelectionDelay = 160
+const selectionSelectedClass = 'selection-selected-node'
 
 export const areSelectionIdsEqual = (currentIds: Set<string>, nextIds: string[]) => {
   if (currentIds.size !== nextIds.length) {
@@ -23,6 +24,58 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
     nodeIds: string[]
     afterEffects: Array<() => void>
   } | null = null
+  let selectedRootClassIds = new Set<string>()
+  let selectedRootClassFrame: number | undefined
+
+  const escapeCssAttributeValue = (value: string) => value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\a ')
+    .replace(/\r/g, '\\d ')
+
+  const getNodeElementById = (nodeId: string) => {
+    const selector = `.vue-flow__node[data-id="${escapeCssAttributeValue(nodeId)}"]`
+
+    return runtime.canvasPanel.value?.querySelector<HTMLElement>(selector) ?? null
+  }
+
+  const syncSelectedRootClasses = () => {
+    selectedRootClassFrame = undefined
+
+    const nextIds = runtime.selectedNodeIds.value
+
+    selectedRootClassIds.forEach((nodeId) => {
+      if (!nextIds.has(nodeId)) {
+        getNodeElementById(nodeId)?.classList.remove(selectionSelectedClass)
+      }
+    })
+
+    nextIds.forEach((nodeId) => {
+      getNodeElementById(nodeId)?.classList.add(selectionSelectedClass)
+    })
+
+    selectedRootClassIds = new Set(nextIds)
+  }
+
+  const scheduleSelectedRootClassSync = () => {
+    if (selectedRootClassFrame) {
+      return
+    }
+
+    nextTick(() => {
+      if (selectedRootClassFrame) {
+        return
+      }
+
+      selectedRootClassFrame = window.requestAnimationFrame(syncSelectedRootClasses)
+    })
+  }
+
+  const stopSelectedRootClassWatch = watch(
+    [runtime.selectedNodeIds, runtime.nodes],
+    scheduleSelectedRootClassSync,
+    { flush: 'post' }
+  )
 
   const getSelectedNodeIds = () => {
     return Array.from(runtime.selectedNodeIds.value)
@@ -57,14 +110,10 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
     runtime.edges.value = nextEdges
   }
 
-  const refreshSelectedNodeClasses = () => {
-    runtime.nodes.value = services.withSelectionState(runtime.nodes.value as FlowNode[])
-  }
-
   const runSelectionSideEffects = () => {
     const shouldFinishDropSettle = runtime.isDropSettling.value
 
-    refreshSelectedNodeClasses()
+    scheduleSelectedRootClassSync()
     nextTick(() => {
       services.scheduleSelectionBoundsRefresh()
       services.updatePresenceSelection()
@@ -138,7 +187,23 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
   }
 
   const isNodeSelected = (nodeId: string) => {
-    return runtime.selectedNodeIds.value.has(nodeId)
+    return Boolean(runtime.selectedNodeLookup[nodeId])
+  }
+
+  const isNodeVisuallySelected = (nodeId: string) => {
+    return Boolean(runtime.selectedNodeVisualLookup[nodeId])
+  }
+
+  const cleanupSelectionState = () => {
+    stopSelectedRootClassWatch()
+    if (selectedRootClassFrame) {
+      window.cancelAnimationFrame(selectedRootClassFrame)
+      selectedRootClassFrame = undefined
+    }
+    selectedRootClassIds.forEach((nodeId) => {
+      getNodeElementById(nodeId)?.classList.remove(selectionSelectedClass)
+    })
+    selectedRootClassIds = new Set()
   }
 
   const setSelectedNodes = (nodeIds: string[], options: SelectionUpdateOptions = {}) => {
@@ -161,8 +226,10 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
 
   return {
     clearNodeSelection,
+    cleanupSelectionState,
     getSelectedNodeIds,
     isNodeSelected,
+    isNodeVisuallySelected,
     selectOnlyNode,
     setSelectedNodes
   }

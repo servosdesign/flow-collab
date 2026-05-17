@@ -1,6 +1,7 @@
 import type { FlowPayload } from '@vue-flow-sync/shared'
 import { Router } from 'express'
 import { FlowModel } from '../models/Flow.js'
+import { resetSeedFlowDocument } from '../realtime.js'
 
 const router = Router()
 
@@ -78,6 +79,19 @@ router.put('/:slug', async (req, res, next) => {
       .lean()
 
     res.json(flow)
+  } catch (error) {
+    next(error)
+  }
+})
+
+router.post('/:slug/reset-seed', async (req, res, next) => {
+  try {
+    const flow = await resetSeedFlowDocument(req.params.slug)
+
+    res.json({
+      slug: req.params.slug,
+      ...flow
+    })
   } catch (error) {
     next(error)
   }

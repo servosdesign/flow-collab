@@ -1,4 +1,4 @@
-# Vue Flow Sync
+# Flow Collab
 
 A real-time collaborative flowchart editor built with Vue 3, Vue Flow, ShareDB, Express, and MongoDB.
 

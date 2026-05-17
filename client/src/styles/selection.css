@@ -32,6 +32,31 @@
     0 0 0 2px rgb(26 115 232 / 10%);
 }
 
+.selected-node-outline-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  pointer-events: none;
+}
+
+.selected-node-outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #1a73e8;
+  border-radius: 0;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 70%) inset,
+    0 0 0 2px rgb(26 115 232 / 10%);
+}
+
+.selection-move-interaction-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  background: transparent;
+  pointer-events: auto;
+}
+
 .selected-nodes-outline {
   position: absolute;
   z-index: 13;
@@ -45,7 +70,16 @@
   pointer-events: auto;
 }
 
+.selection-move-origin-mask {
+  position: absolute;
+  z-index: 18;
+  box-sizing: border-box;
+  background: #eef3f8;
+  pointer-events: none;
+}
+
 .selected-nodes-outline.selection-preview-active {
+  z-index: 20;
   overflow: hidden;
 }
 

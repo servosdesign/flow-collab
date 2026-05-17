@@ -33,6 +33,12 @@ export const saveFlow = async (slug: string, payload: FlowPayload) => {
   })
 }
 
+export const resetSeedFlow = async (slug: string) => {
+  return request<FlowPayload & { slug: string }>(`/api/flows/${slug}/reset-seed`, {
+    method: 'POST'
+  })
+}
+
 export const uploadNodeImage = async (file: File) => {
   const formData = new FormData()
   formData.append('image', file)

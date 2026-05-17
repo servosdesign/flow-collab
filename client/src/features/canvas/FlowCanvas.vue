@@ -4,6 +4,7 @@ import FlowContextMenu from '../context-menu/FlowContextMenu.vue'
 import RemoteCursorLayer from '../presence/RemoteCursorLayer.vue'
 import SelectionOverlay from '../selection/SelectionOverlay.vue'
 import CanvasOverlays from './CanvasOverlays.vue'
+import FlowCreateToolbar from './FlowCreateToolbar.vue'
 import FlowGraph from './FlowGraph.vue'
 
 const {
@@ -22,8 +23,7 @@ const {
     ref="canvasPanel"
     class="canvas-panel"
     :class="{
-      'selection-hover': isHoveringSelection || isMovingSelection,
-      'selection-moving': isMovingSelection
+      'selection-hover': isHoveringSelection || isMovingSelection
     }"
     aria-label="Shared flow canvas"
     @contextmenu="handleCanvasContextMenu"
@@ -33,6 +33,7 @@ const {
   >
     <CanvasOverlays />
     <FlowGraph />
+    <FlowCreateToolbar />
     <SelectionOverlay />
     <RemoteCursorLayer />
     <FlowContextMenu />

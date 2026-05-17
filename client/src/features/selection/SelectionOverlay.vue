@@ -6,6 +6,7 @@ const {
   handleSelectedBoundsPointerDown,
   lassoPreviewRects,
   openSelectedBoundsContextMenu,
+  selectedNodeOutlineRects,
   selectedBoundsStyle,
   selectionMovePreview
 } = useSelectionOverlayContext()
@@ -119,6 +120,33 @@ const previewSecondaryLabel = () => {
       :style="rect.style"
     />
   </div>
+
+  <div
+    v-if="selectedNodeOutlineRects.length"
+    class="selected-node-outline-layer"
+    aria-hidden="true"
+  >
+    <span
+      v-for="rect in selectedNodeOutlineRects"
+      :key="rect.id"
+      v-memo="[rect.id, rect.style]"
+      class="selected-node-outline"
+      :style="rect.style"
+    />
+  </div>
+
+  <div
+    v-if="selectionMovePreview.interactionShield"
+    class="selection-move-interaction-shield"
+    aria-hidden="true"
+  />
+
+  <div
+    v-if="selectedBoundsStyle && selectionMovePreview.showOriginMask"
+    class="selection-move-origin-mask"
+    :style="selectedBoundsStyle"
+    aria-hidden="true"
+  />
 
   <div
     v-if="selectedBoundsStyle"

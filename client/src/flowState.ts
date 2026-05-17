@@ -1,4 +1,4 @@
-import { computed, ref, shallowRef } from 'vue'
+import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import type { FlowNodeKind, FlowViewport, SyncFlowDocument, SyncPresenceDocument, SyncPresenceUser } from '@vue-flow-sync/shared'
 import type { ShareDocument } from 'sharedb/lib/client'
 import type { FlowEdge, FlowNode } from './graph'
@@ -13,6 +13,36 @@ export const createFlowAppState = () : FlowAppState => {
   const savedName = localStorage.getItem('vue-flow-sync-user-name') ?? ''
   const savedColor = localStorage.getItem('vue-flow-sync-user-color') ?? ''
   const userName = ref(savedName)
+  const selectedNodeIds = shallowRef<Set<string>>(new Set())
+  const selectedNodeLookup = reactive<Record<string, true | undefined>>({})
+  const selectedNodeVisualLookup = reactive<Record<string, true | undefined>>({})
+
+  const syncSelectedLookup = (
+    lookup: Record<string, true | undefined>,
+    nodeIds: Set<string>
+  ) => {
+    Object.keys(lookup).forEach((nodeId) => {
+      if (!nodeIds.has(nodeId)) {
+        delete lookup[nodeId]
+      }
+    })
+
+    nodeIds.forEach((nodeId) => {
+      lookup[nodeId] = true
+    })
+  }
+
+  watch(
+    selectedNodeIds,
+    (nodeIds) => {
+      syncSelectedLookup(selectedNodeLookup, nodeIds)
+      syncSelectedLookup(
+        selectedNodeVisualLookup,
+        nodeIds.size === 1 ? nodeIds : new Set<string>()
+      )
+    },
+    { flush: 'sync' }
+  )
 
   return {
     nodes: shallowRef<FlowNode[]>([]),
@@ -28,7 +58,9 @@ export const createFlowAppState = () : FlowAppState => {
     localSource: crypto.randomUUID(),
     currentViewport: ref<FlowViewport>({ x: 80, y: 60, zoom: 0.45 }),
     rightSelection: shallowRef<DragSelection | null>(null),
-    selectedNodeIds: shallowRef<Set<string>>(new Set()),
+    selectedNodeIds,
+    selectedNodeLookup,
+    selectedNodeVisualLookup,
     selectionMoveHiddenNodeIds: shallowRef<Set<string>>(new Set()),
     selectionMoveHiddenEdgeIds: shallowRef<Set<string>>(new Set()),
     selectionMovePreviewVersion: ref(0),

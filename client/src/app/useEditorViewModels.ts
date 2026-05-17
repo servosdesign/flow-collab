@@ -67,6 +67,7 @@ export const useEditorViewModels = ({
   const nodeCount = computed(() => nodes.value.length)
   const edgeCount = computed(() => edges.value.length)
   const hasError = computed(() => errorMessage.value.length > 0)
+  const isCanvasLoading = computed(() => isFlowLoading.value || realtime.isResettingFlow.value)
   const emptySelectedUsers: SyncPresenceUser[] = []
   let selectedUsersSignature = ''
   let cachedSelectedUsersByNodeId = new Map<string, SyncPresenceUser[]>()
@@ -225,7 +226,7 @@ export const useEditorViewModels = ({
     canvasOverlay: {
       errorMessage,
       hasError,
-      isFlowLoading,
+      isFlowLoading: isCanvasLoading,
       isLoggedIn
     },
     contextMenu: {
@@ -242,7 +243,7 @@ export const useEditorViewModels = ({
       getSelectedUsersForNode,
       isLassoSelecting,
       isLoggedIn,
-      isNodeSelected: selection.isNodeSelected,
+      isNodeSelected: selection.isNodeVisuallySelected,
       openNodeMenuButton: contextMenu.openNodeMenuButton,
       resizeNode: resize.resizeNode,
       resizeNodePreview: resize.resizeNodePreview,
@@ -261,6 +262,7 @@ export const useEditorViewModels = ({
       handleSelectedBoundsPointerDown: selection.handleSelectedBoundsPointerDown,
       lassoPreviewRects: selection.lassoPreviewRects,
       openSelectedBoundsContextMenu: contextMenu.openSelectedBoundsContextMenu,
+      selectedNodeOutlineRects: selection.selectedNodeOutlineRects,
       selectedBoundsStyle: selection.selectedBoundsStyle,
       selectionMovePreview: selection.selectionMovePreview
     },
@@ -273,6 +275,7 @@ export const useEditorViewModels = ({
       edgeCount,
       hasError,
       handleCreateDragStart: nodeActions.handleCreateDragStart,
+      isFlowLoading,
       isLoggedIn,
       joinPresence: presence.joinPresence,
       loginNameInput,
@@ -280,6 +283,8 @@ export const useEditorViewModels = ({
       logoutUser: presence.logoutUser,
       nodeCount,
       pendingCreate,
+      isResettingFlow: realtime.isResettingFlow,
+      resetFlowToSeed: realtime.resetFlowToSeed,
       setCreateMode: nodeActions.setCreateMode,
       status,
       userInitials,
