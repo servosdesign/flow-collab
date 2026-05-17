@@ -47,7 +47,9 @@ export const useEditorViewModels = ({
     duplicateCount,
     edges,
     errorMessage,
+    dropSettleVersion,
     isFlowLoading,
+    isDropSettling,
     isHoveringSelection,
     isLassoSelecting,
     isLoggedIn,
@@ -57,6 +59,7 @@ export const useEditorViewModels = ({
     nodes,
     pendingCreate,
     selectionMoveHiddenEdgeIds,
+    selectionMovePreviewVersion,
     selectedNodeIds,
     status,
     userId
@@ -207,12 +210,17 @@ export const useEditorViewModels = ({
       isLoggedIn,
       isValidSectionConnection: graphState.isValidSectionConnection,
       nodes: nodes as typeof nodes & { value: FlowNode[] },
-      selectionMoveHiddenEdgeIds
+      selectionMoveHiddenEdgeIds,
+      selectionMovePreviewVersion,
+      getSelectionMoveDrag: () => state.interaction.selectionMoveDrag
     },
     miniMap: {
+      dropSettleVersion,
       getMiniMapNodeColor,
       getMiniMapNodeStroke,
-      isLoggedIn
+      isDropSettling,
+      isLoggedIn,
+      selectedNodeIds
     },
     canvasOverlay: {
       errorMessage,

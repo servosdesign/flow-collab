@@ -13,6 +13,8 @@ import {
   edgeClassSignature,
   edgeHasClass,
   resolveGraphEdgeGeometry,
+  resolveGraphEdgeGeometryWithNodeOffsets,
+  type EdgeNodeOffsets,
   type ResolvedEdgeGeometry
 } from './edgeGeometry'
 
@@ -24,7 +26,11 @@ const {
   getNodes,
   viewport
 } = useVueFlow()
-const { selectionMoveHiddenEdgeIds } = useFlowGraphContext()
+const {
+  getSelectionMoveDrag,
+  selectionMoveHiddenEdgeIds,
+  selectionMovePreviewVersion
+} = useFlowGraphContext()
 
 let drawFrame: number | undefined
 let geometryDirty = true
@@ -33,6 +39,7 @@ let cachedEdgeRenders: CachedEdgeRender[] = []
 const hiddenEdgeClass = 'selection-drag-hidden-edge'
 const maxDevicePixelRatio = 2
 const viewportCullPadding = 160
+const maxPreviewAffectedEdges = 120
 
 type EdgePaintStyle = {
   stroke: string
@@ -50,6 +57,7 @@ type EdgeBounds = {
 }
 
 type CachedEdgeRender = {
+  id: string
   geometryKey: string
   styleKey: string
   geometry: ResolvedEdgeGeometry
@@ -57,6 +65,12 @@ type CachedEdgeRender = {
   path: Path2D
   style: EdgePaintStyle
   markerType: MarkerType | null
+}
+
+type ActiveDragEdgePreview = {
+  affectedEdgeIds: Set<string>
+  previewEdges: GraphEdge[]
+  nodeOffsets: EdgeNodeOffsets
 }
 
 type CanvasLayoutState = {
@@ -220,6 +234,21 @@ const getGeometryBounds = (geometry: ResolvedEdgeGeometry, style: EdgePaintStyle
     top: Math.min(geometry.sourceY, geometry.targetY) - padding,
     right: Math.max(geometry.sourceX, geometry.targetX) + padding,
     bottom: Math.max(geometry.sourceY, geometry.targetY) + padding
+  }
+}
+
+const getSelectionMoveDelta = () => {
+  const drag = getSelectionMoveDrag()
+
+  if (!drag) {
+    return null
+  }
+
+  const zoom = Math.max(0.001, viewport.value.zoom)
+
+  return {
+    x: (drag.currentClientX - drag.startClientX) / zoom,
+    y: (drag.currentClientY - drag.startClientY) / zoom
   }
 }
 
@@ -399,6 +428,73 @@ const drawArrowHead = (
   context.restore()
 }
 
+const drawEdgeRender = (
+  context: CanvasRenderingContext2D,
+  geometry: ResolvedEdgeGeometry,
+  path: Path2D,
+  style: EdgePaintStyle,
+  markerType: MarkerType | null
+) => {
+  context.save()
+  context.strokeStyle = style.stroke
+  context.lineWidth = style.lineWidth
+  context.shadowBlur = style.shadowBlur
+  context.shadowColor = style.shadowColor
+  context.setLineDash(style.dashed ? [5, 5] : [])
+  context.lineDashOffset = style.dashed ? -(performance.now() / 45) % 10 : 0
+  context.stroke(path)
+  context.setLineDash([])
+  drawArrowHead(context, geometry, style, markerType)
+  context.restore()
+}
+
+const getActiveDragEdgePreview = (edges: GraphEdge[]) : ActiveDragEdgePreview | null => {
+  const drag = getSelectionMoveDrag()
+
+  if (!drag) {
+    return null
+  }
+
+  const affectedEdges = edges.filter((edge) =>
+    drag.hiddenIds.has(edge.source) || drag.hiddenIds.has(edge.target)
+  )
+
+  if (affectedEdges.length === 0) {
+    return null
+  }
+
+  const affectedEdgeIds = new Set(affectedEdges.map((edge) => edge.id))
+
+  if (drag.mode !== 'visible' || affectedEdges.length > maxPreviewAffectedEdges) {
+    return {
+      affectedEdgeIds,
+      previewEdges: [],
+      nodeOffsets: new Map()
+    }
+  }
+
+  const delta = getSelectionMoveDelta()
+
+  if (!delta) {
+    return {
+      affectedEdgeIds,
+      previewEdges: [],
+      nodeOffsets: new Map()
+    }
+  }
+
+  const nodeOffsets: EdgeNodeOffsets = new Map()
+  drag.hiddenIds.forEach((nodeId) => {
+    nodeOffsets.set(nodeId, delta)
+  })
+
+  return {
+    affectedEdgeIds,
+    previewEdges: affectedEdges,
+    nodeOffsets
+  }
+}
+
 const resolveCachedEdgeRender = (edge: GraphEdge) => {
   if (edgeHasClass(edge.class, hiddenEdgeClass) || selectionMoveHiddenEdgeIds.value.has(edge.id)) {
     edgeRenderCache.delete(edge.id)
@@ -423,6 +519,7 @@ const resolveCachedEdgeRender = (edge: GraphEdge) => {
     ? getEdgePaintStyle(edge)
     : cached.style
   const render: CachedEdgeRender = {
+    id: edge.id,
     geometryKey,
     styleKey,
     geometry,
@@ -477,10 +574,13 @@ const drawCanvas = () => {
 
   const { left, top, width, height, renderScale } = syncCanvasSize(canvas)
   let hasAnimatedEdges = false
+  const edges = getEdges.value
 
   if (geometryDirty) {
     rebuildEdgeRenderCache()
   }
+
+  const activeDragEdgePreview = getActiveDragEdgePreview(edges)
 
   context.setTransform(1, 0, 0, 1, 0, 0)
   context.clearRect(0, 0, canvas.width, canvas.height)
@@ -496,6 +596,10 @@ const drawCanvas = () => {
   context.lineJoin = 'round'
 
   for (const edgeRender of cachedEdgeRenders) {
+    if (activeDragEdgePreview?.affectedEdgeIds.has(edgeRender.id)) {
+      continue
+    }
+
     if (!isBoundsVisible(edgeRender.bounds, left, top, width, height)) {
       continue
     }
@@ -506,17 +610,37 @@ const drawCanvas = () => {
       hasAnimatedEdges = true
     }
 
-    context.save()
-    context.strokeStyle = style.stroke
-    context.lineWidth = style.lineWidth
-    context.shadowBlur = style.shadowBlur
-    context.shadowColor = style.shadowColor
-    context.setLineDash(style.dashed ? [5, 5] : [])
-    context.lineDashOffset = style.dashed ? -(performance.now() / 45) % 10 : 0
-    context.stroke(path)
-    context.setLineDash([])
-    drawArrowHead(context, geometry, style, edgeRender.markerType)
-    context.restore()
+    drawEdgeRender(context, geometry, path, style, edgeRender.markerType)
+  }
+
+  for (const edge of activeDragEdgePreview?.previewEdges ?? []) {
+    const style = getEdgePaintStyle(edge)
+    const geometry = resolveGraphEdgeGeometryWithNodeOffsets(
+      edge,
+      activeDragEdgePreview?.nodeOffsets ?? new Map()
+    )
+
+    if (!geometry) {
+      continue
+    }
+
+    const bounds = getGeometryBounds(geometry, style)
+
+    if (!isBoundsVisible(bounds, left, top, width, height)) {
+      continue
+    }
+
+    if (style.dashed) {
+      hasAnimatedEdges = true
+    }
+
+    drawEdgeRender(
+      context,
+      geometry,
+      new Path2D(geometry.path),
+      style,
+      getMarkerType(edge.markerEnd)
+    )
   }
 
   if (hasAnimatedEdges) {
@@ -539,6 +663,7 @@ watch(
 watch(getEdges, markGeometryDirty, { deep: true, flush: 'post' })
 watch(getNodes, markGeometryDirty, { deep: true, flush: 'post' })
 watch(selectionMoveHiddenEdgeIds, markGeometryDirty, { flush: 'post' })
+watch(selectionMovePreviewVersion, scheduleDraw, { flush: 'post' })
 
 onMounted(() => {
   scheduleDraw()

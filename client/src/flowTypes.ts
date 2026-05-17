@@ -103,6 +103,7 @@ export type FlowTimers = {
   pendingCursor?: { x: number, y: number }
   selectionBoundsFrame?: number
   lassoSelectionFrame?: number
+  deferredSelectionTimer?: number
 }
 
 export type FlowInteractionState = {
@@ -129,6 +130,7 @@ export type FlowAppState = {
   selectedNodeIds: Ref<Set<string>>
   selectionMoveHiddenNodeIds: Ref<Set<string>>
   selectionMoveHiddenEdgeIds: Ref<Set<string>>
+  selectionMovePreviewVersion: Ref<number>
   lassoPreviewNodeIds: Ref<Set<string>>
   duplicateCount: Ref<number>
   collaborators: Ref<SyncPresenceUser[]>
@@ -136,7 +138,9 @@ export type FlowAppState = {
   canvasClientBounds: Ref<CanvasClientBounds | null>
   canvasSize: Ref<{ width: number, height: number }>
   selectionBoundsVersion: Ref<number>
+  dropSettleVersion: Ref<number>
   isHoveringSelection: Ref<boolean>
+  isDropSettling: Ref<boolean>
   isMovingSelection: Ref<boolean>
   sectionNodeDragPreview: Ref<SectionNodeDragPreview | null>
   isResizingNode: Ref<boolean>

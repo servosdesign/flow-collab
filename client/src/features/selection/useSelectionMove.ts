@@ -106,6 +106,10 @@ export const useSelectionMove = (
   let activePendingSelectionNodeId: string | null = null
   let visibleDragElementSnapshots = new Map<string, VisibleDragElementSnapshot>()
 
+  const bumpSelectionMovePreviewVersion = () => {
+    runtime.selectionMovePreviewVersion.value += 1
+  }
+
   const selectionMovePreview = computed(() => {
     const sectionDragPreview = runtime.sectionNodeDragPreview.value
 
@@ -974,6 +978,7 @@ export const useSelectionMove = (
     selectionMoveDrag.frame = undefined
     paintSelectionMovePreview(selectionMoveDrag)
     paintVisibleDragPreview(selectionMoveDrag)
+    bumpSelectionMovePreviewVersion()
 
     if (selectionMoveDrag.mode === 'bundle') {
       return
@@ -1264,6 +1269,7 @@ export const useSelectionMove = (
     hideBundleSelectionNodes(runtime.interaction.selectionMoveDrag)
     beginVisibleDragPreview(runtime.interaction.selectionMoveDrag)
     runtime.isMovingSelection.value = true
+    bumpSelectionMovePreviewVersion()
 
     return true
   }
@@ -1364,6 +1370,7 @@ export const useSelectionMove = (
     activePendingSelectionNodeId = null
     runtime.interaction.selectionMoveDrag = null
     runtime.isMovingSelection.value = false
+    bumpSelectionMovePreviewVersion()
     services.scheduleSelectionBoundsRefresh()
     if (committed) {
       nextTick(() => clearSelectionMovePresentation(false))
@@ -1575,6 +1582,7 @@ export const useSelectionMove = (
     runtime.interaction.selectionMoveDrag = null
     runtime.isMovingSelection.value = false
     runtime.isResizingNode.value = false
+    bumpSelectionMovePreviewVersion()
     clearSelectionMovePresentation()
     services.scheduleSelectionBoundsRefresh()
     if (pendingSelectionNodeId) {
@@ -1709,6 +1717,7 @@ export const useSelectionMove = (
       pendingNodePointerMove?.pendingSelectionNodeId ?? activePendingSelectionNodeId
     clearSelectionMovePresentation()
     runtime.interaction.selectionMoveDrag = null
+    bumpSelectionMovePreviewVersion()
     if (runtime.interaction.scheduleSelectionMoveFrame === scheduleSelectionMoveFrame) {
       delete runtime.interaction.scheduleSelectionMoveFrame
     }

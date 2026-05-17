@@ -175,31 +175,40 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
       return
     }
 
-    const applySelection = () => {
+    const clearCommittedPendingSelection = () => {
       if (pendingNodePressSelection !== pending) {
         return
       }
 
-      setSelectedNodes([nodeId])
-      nextTick(() => {
-        if (pendingNodePressSelection === pending) {
-          clearPendingNodePressSelection()
-        }
-      })
+      clearPendingNodePressSelection()
     }
 
     if (reason === 'drop') {
-      window.requestAnimationFrame(applySelection)
+      setSelectedNodes([nodeId], {
+        deferEffects: true,
+        afterEffects: clearCommittedPendingSelection
+      })
       return
     }
 
-    applySelection()
+    setSelectedNodes([nodeId])
+    nextTick(clearCommittedPendingSelection)
   }
 
   const cancelPendingNodePressSelection = (nodeId: string) => {
     if (pendingNodePressSelection?.nodeId === nodeId) {
       clearPendingNodePressSelection()
     }
+  }
+
+  const setSelectedNodesImmediate = (nodeIds: string[]) => {
+    clearPendingNodePressSelection()
+    setSelectedNodes(nodeIds)
+  }
+
+  const clearNodeSelectionImmediate = () => {
+    clearPendingNodePressSelection()
+    clearNodeSelection()
   }
 
   const selectionMove = useSelectionMove(runtime, services, {
@@ -329,11 +338,11 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
       }
 
       runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350
-      setSelectedNodes(selectedIds)
+      setSelectedNodesImmediate(selectedIds)
       return
     }
 
-    setSelectedNodes([payload.node.id])
+    setSelectedNodesImmediate([payload.node.id])
   }
 
   const handleEdgeClick = (payload: EdgeMouseEvent) => {
@@ -341,7 +350,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
       return
     }
 
-    clearNodeSelection()
+    clearNodeSelectionImmediate()
     runtime.edges.value = runtime.edges.value.map((edge) => ({
       ...edge,
       selected: edge.id === payload.edge.id
@@ -361,7 +370,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
       return
     }
 
-    setSelectedNodes([payload.node.id])
+    setSelectedNodesImmediate([payload.node.id])
     runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350
     selectionMove.handleSectionNodeDragStart(payload.node.id)
   }
@@ -675,7 +684,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
         beginPendingNodePressSelection(nodeId, selectedIds, selectedNodeElement)
         pendingSelectionNodeId = nodeId
       } else if (!shouldMoveSelection) {
-        setSelectedNodes([nodeId])
+        setSelectedNodesImmediate([nodeId])
       }
 
       runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350
@@ -812,7 +821,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
 
     if (!runtime.interaction.suppressNextContextMenu) {
       clearLassoPreview()
-      setSelectedNodes([])
+      setSelectedNodesImmediate([])
       return
     }
 
@@ -824,7 +833,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
       currentClientX: event.clientX,
       currentClientY: event.clientY
     })
-    setSelectedNodes(Array.from(runtime.lassoPreviewNodeIds.value))
+    setSelectedNodesImmediate(Array.from(runtime.lassoPreviewNodeIds.value))
     clearLassoPreview()
     runtime.interaction.suppressNextContextMenu = false
   }
@@ -892,6 +901,6 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
     selectOnlyNode,
     selectionMovePreview: selectionMove.selectionMovePreview,
     selectedBoundsStyle,
-    setSelectedNodes
+    setSelectedNodes: setSelectedNodesImmediate
   }
 }

@@ -32,6 +32,8 @@ export type ResolvedEdgeGeometry = {
   targetPosition: Position
 }
 
+export type EdgeNodeOffsets = Map<string, { x: number, y: number }>
+
 export const edgeHasClass = (className: EdgeClassValue, name: string) => {
   if (typeof className === 'string') {
     return className.split(/\s+/).includes(name)
@@ -137,11 +139,12 @@ const findHandle = (
 const getNodeHandlePosition = (
   node: GraphNode,
   handle: HandleElement | null,
-  fallbackPosition: Position
+  fallbackPosition: Position,
+  offset = { x: 0, y: 0 }
 ) => {
   const position = handle?.position ?? fallbackPosition
-  const x = (handle?.x ?? 0) + node.computedPosition.x
-  const y = (handle?.y ?? 0) + node.computedPosition.y
+  const x = (handle?.x ?? 0) + node.computedPosition.x + offset.x
+  const y = (handle?.y ?? 0) + node.computedPosition.y + offset.y
   const width = handle?.width ?? node.dimensions.width
   const height = handle?.height ?? node.dimensions.height
 
@@ -225,6 +228,13 @@ export const resolveSectionThroughEdgePath = (input: EdgeGeometryInput) => {
 }
 
 export const resolveGraphEdgeGeometry = (edge: GraphEdge) : ResolvedEdgeGeometry | null => {
+  return resolveGraphEdgeGeometryWithNodeOffsets(edge)
+}
+
+export const resolveGraphEdgeGeometryWithNodeOffsets = (
+  edge: GraphEdge,
+  nodeOffsets: EdgeNodeOffsets = new Map()
+) : ResolvedEdgeGeometry | null => {
   if (edge.hidden || edge.sourceNode?.hidden || edge.targetNode?.hidden) {
     return null
   }
@@ -240,8 +250,10 @@ export const resolveGraphEdgeGeometry = (edge: GraphEdge) : ResolvedEdgeGeometry
   const targetHandle = findHandle(targetNode, 'target', edge.targetHandle)
   const sourcePosition = sourceHandle?.position ?? Position.Bottom
   const targetPosition = targetHandle?.position ?? Position.Top
-  const sourcePoint = getNodeHandlePosition(sourceNode, sourceHandle, sourcePosition)
-  const targetPoint = getNodeHandlePosition(targetNode, targetHandle, targetPosition)
+  const sourceOffset = nodeOffsets.get(sourceNode.id)
+  const targetOffset = nodeOffsets.get(targetNode.id)
+  const sourcePoint = getNodeHandlePosition(sourceNode, sourceHandle, sourcePosition, sourceOffset)
+  const targetPoint = getNodeHandlePosition(targetNode, targetHandle, targetPosition, targetOffset)
   const pathOptions = 'pathOptions' in edge
     ? (edge.pathOptions as SmoothStepPathOptions | undefined)
     : undefined
@@ -252,10 +264,10 @@ export const resolveGraphEdgeGeometry = (edge: GraphEdge) : ResolvedEdgeGeometry
     targetNode,
     sourceHandleId: edge.sourceHandle,
     targetHandleId: edge.targetHandle,
-    sourceX: finiteOrFallback(edge.sourceX, sourcePoint.x),
-    sourceY: finiteOrFallback(edge.sourceY, sourcePoint.y),
-    targetX: finiteOrFallback(edge.targetX, targetPoint.x),
-    targetY: finiteOrFallback(edge.targetY, targetPoint.y),
+    sourceX: sourceOffset ? sourcePoint.x : finiteOrFallback(edge.sourceX, sourcePoint.x),
+    sourceY: sourceOffset ? sourcePoint.y : finiteOrFallback(edge.sourceY, sourcePoint.y),
+    targetX: targetOffset ? targetPoint.x : finiteOrFallback(edge.targetX, targetPoint.x),
+    targetY: targetOffset ? targetPoint.y : finiteOrFallback(edge.targetY, targetPoint.y),
     sourcePosition,
     targetPosition,
     pathOptions

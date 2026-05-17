@@ -53,8 +53,16 @@ const overlayCanvasElement = ref<HTMLCanvasElement | null>(null)
 let drawFrame: number | undefined
 let nodeLayerDirty = true
 let overlayLayerDirty = true
+let miniMapSnapshotDirty = true
+let deferredNodeLayerDirty = false
 let lastDrawnViewBox: Rect | null = null
 let lastCanvasSize: CanvasSize | null = null
+let cachedMiniMapSnapshot: MiniMapSnapshot = {
+  nodes: [],
+  bounds: null,
+  contentSignature: '',
+  selectionSignature: ''
+}
 let miniMapDrag: {
   pointerId: number
   startClientX: number
@@ -73,9 +81,12 @@ const {
   viewport
 } = useVueFlow()
 const {
+  dropSettleVersion,
   getMiniMapNodeColor,
   getMiniMapNodeStroke,
-  isLoggedIn
+  isDropSettling,
+  isLoggedIn,
+  selectedNodeIds
 } = useMiniMapContext()
 
 const rootStyle = computed(() => ({
@@ -83,7 +94,7 @@ const rootStyle = computed(() => ({
   height: `${props.height}px`
 }))
 
-const miniMapSnapshot = computed<MiniMapSnapshot>(() => {
+const buildMiniMapSnapshot = () : MiniMapSnapshot => {
   const snapshots: MiniMapNodeSnapshot[] = []
   const contentSignatureParts: string[] = []
   const selectionSignatureParts: string[] = []
@@ -138,12 +149,41 @@ const miniMapSnapshot = computed<MiniMapSnapshot>(() => {
     contentSignature: contentSignatureParts.join('|'),
     selectionSignature: selectionSignatureParts.join('|')
   }
-})
+}
+
+const getMiniMapSnapshot = () => {
+  if (miniMapSnapshotDirty && !isDropSettling.value) {
+    cachedMiniMapSnapshot = buildMiniMapSnapshot()
+    miniMapSnapshotDirty = false
+  }
+
+  return cachedMiniMapSnapshot
+}
 
 const queueNodeLayerDraw = () => {
   nodeLayerDirty = true
   overlayLayerDirty = true
   queueDraw()
+}
+
+const markNodeLayerDirty = () => {
+  miniMapSnapshotDirty = true
+
+  if (isDropSettling.value) {
+    deferredNodeLayerDirty = true
+    return
+  }
+
+  queueNodeLayerDraw()
+}
+
+const flushDeferredNodeLayerDraw = () => {
+  if (!deferredNodeLayerDirty && !miniMapSnapshotDirty) {
+    return
+  }
+
+  deferredNodeLayerDirty = false
+  queueNodeLayerDraw()
 }
 
 const queueOverlayLayerDraw = () => {
@@ -203,7 +243,7 @@ const drawNodeLayer = (viewBox: Rect, canvasSize: CanvasSize) => {
     return
   }
 
-  for (const node of miniMapSnapshot.value.nodes) {
+  for (const node of getMiniMapSnapshot().nodes) {
     if (node.hidden) {
       continue
     }
@@ -302,7 +342,7 @@ const getCanvasSize = () : CanvasSize => {
 }
 
 const getViewBox = (canvasSize: CanvasSize) : Rect | null => {
-  const nodesRect = miniMapSnapshot.value.bounds
+  const nodesRect = getMiniMapSnapshot().bounds
   const fallbackRect = viewportRect()
   const boundingRect = nodesRect ?? fallbackRect
 
@@ -548,15 +588,16 @@ const handleWheel = (event: WheelEvent) => {
   void centerViewportOn(centerX, centerY, nextZoom)
 }
 
-watch(
-  () => miniMapSnapshot.value.contentSignature,
-  queueNodeLayerDraw,
-  { flush: 'post' }
-)
+watch(nodes, markNodeLayerDirty, { flush: 'post' })
+watch(selectedNodeIds, markNodeLayerDirty, { flush: 'post' })
 
 watch(
-  () => miniMapSnapshot.value.selectionSignature,
-  queueNodeLayerDraw,
+  () => [isDropSettling.value, dropSettleVersion.value],
+  ([settling]) => {
+    if (!settling) {
+      flushDeferredNodeLayerDraw()
+    }
+  },
   { flush: 'post' }
 )
 
