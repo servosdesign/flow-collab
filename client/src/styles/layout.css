@@ -224,3 +224,13 @@
   cursor: move;
 }
 
+.canvas-panel.selection-moving .vue-flow__node,
+.canvas-panel.selection-moving .vue-flow__edge {
+  pointer-events: none !important;
+}
+
+.canvas-panel.selection-moving .selected-nodes-outline,
+.canvas-panel.selection-moving .selected-nodes-outline * {
+  pointer-events: auto;
+}
+

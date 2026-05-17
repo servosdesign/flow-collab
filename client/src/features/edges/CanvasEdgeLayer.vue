@@ -8,6 +8,7 @@ import {
   type HandleElement
 } from '@vue-flow/core'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useFlowGraphContext } from '../../app/flowEditorContext'
 import {
   edgeClassSignature,
   edgeHasClass,
@@ -23,6 +24,7 @@ const {
   getNodes,
   viewport
 } = useVueFlow()
+const { selectionMoveHiddenEdgeIds } = useFlowGraphContext()
 
 let drawFrame: number | undefined
 let geometryDirty = true
@@ -398,7 +400,7 @@ const drawArrowHead = (
 }
 
 const resolveCachedEdgeRender = (edge: GraphEdge) => {
-  if (edgeHasClass(edge.class, hiddenEdgeClass)) {
+  if (edgeHasClass(edge.class, hiddenEdgeClass) || selectionMoveHiddenEdgeIds.value.has(edge.id)) {
     edgeRenderCache.delete(edge.id)
     return null
   }
@@ -536,6 +538,7 @@ watch(
 
 watch(getEdges, markGeometryDirty, { deep: true, flush: 'post' })
 watch(getNodes, markGeometryDirty, { deep: true, flush: 'post' })
+watch(selectionMoveHiddenEdgeIds, markGeometryDirty, { flush: 'post' })
 
 onMounted(() => {
   scheduleDraw()

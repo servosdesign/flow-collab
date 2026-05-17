@@ -21,7 +21,10 @@ const {
   <section
     ref="canvasPanel"
     class="canvas-panel"
-    :class="{ 'selection-hover': isHoveringSelection || isMovingSelection }"
+    :class="{
+      'selection-hover': isHoveringSelection || isMovingSelection,
+      'selection-moving': isMovingSelection
+    }"
     aria-label="Shared flow canvas"
     @contextmenu="handleCanvasContextMenu"
     @pointerdown.capture="handleCanvasPointerDown"

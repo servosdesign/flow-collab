@@ -36,10 +36,9 @@ const hideSelectedNodesDuringBundleMove = true
 const maxSelectionMovePreviewShapes = 36
 const nodePointerMoveThreshold = 3
 const selectionBoundsPadding = 4
-const selectionDragHiddenClass = 'selection-drag-hidden'
-const selectionDragHiddenEdgeClass = 'selection-drag-hidden-edge'
 const sectionDragClass = 'section-dragging'
 const sectionDragOverLargerClass = 'section-drag-over-larger-section'
+const selectionMoveHiddenStyleId = 'vue-flow-sync-selection-move-hidden'
 
 type UseSelectionMoveOptions = {
   getSelectedNodeIds: () => string[]
@@ -48,18 +47,6 @@ type UseSelectionMoveOptions = {
 type SelectionMovePreviewShape = {
   id: number
   kind: SelectionMovePreviewShapeKind
-}
-
-type HiddenNodeClassSnapshot = {
-  id: string
-  hadClass: boolean
-  className: FlowNode['class']
-}
-
-type HiddenEdgeClassSnapshot = {
-  id: string
-  hadClass: boolean
-  className: FlowEdge['class']
 }
 
 type RuntimePositionedFlowNode = FlowNode & {
@@ -77,6 +64,7 @@ type SelectionMoveStartOptions = {
   previewElement: HTMLElement | null
   movingIds: Set<string>
   selectedFlowBounds: SelectionMoveDrag['selectedFlowBounds']
+  normalizedOriginalNodes?: SyncNode[]
   forceVisible?: boolean
 }
 
@@ -95,8 +83,8 @@ export const useSelectionMove = (
 ) => {
   let selectionMovePointerCaptureTarget: HTMLElement | null = null
   let selectionMovePreviewElement: HTMLElement | null = null
-  let selectionMoveHiddenClassSnapshots: HiddenNodeClassSnapshot[] = []
-  let selectionMoveHiddenEdgeClassSnapshots: HiddenEdgeClassSnapshot[] = []
+  let selectionMoveHiddenNodeIds = new Set<string>()
+  let selectionMoveHiddenEdgeIds = new Set<string>()
   let selectionMovePointerId: number | null = null
   let pendingNodePointerMove: PendingNodePointerMove | null = null
 
@@ -137,10 +125,13 @@ export const useSelectionMove = (
     const shapes = selectionMoveDrag.previewShapeKinds
       .slice(0, Math.min(selectionMoveDrag.previewShapeKinds.length, maxSelectionMovePreviewShapes))
       .map((kind, index) => ({ id: index, kind }))
+    const isSingleSectionBundle =
+      selectionMoveDrag.movingIds.size === 1 &&
+      selectionMoveDrag.previewCounts.sectionCount === 1
 
     return {
       active: true,
-      coverContents: false,
+      coverContents: isSingleSectionBundle,
       showSummary: true,
       ...selectionMoveDrag.previewCounts,
       shapes
@@ -373,177 +364,94 @@ export const useSelectionMove = (
     return className
   }
 
-  const restoreNodeClass = (node: FlowNode, snapshot: HiddenNodeClassSnapshot) => {
-    if (snapshot.hadClass) {
-      return {
-        ...node,
-        class: snapshot.className
-      }
+  const escapeCssAttributeValue = (value: string) => value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\a ')
+    .replace(/\r/g, '\\d ')
+
+  const getSelectionMoveHiddenStyleElement = () => {
+    if (typeof document === 'undefined') {
+      return null
     }
 
-    const { class: _className, ...nextNode } = node
+    let element = document.getElementById(selectionMoveHiddenStyleId) as HTMLStyleElement | null
 
-    return nextNode as FlowNode
-  }
-
-  const restoreEdgeClass = (edge: FlowEdge, snapshot: HiddenEdgeClassSnapshot) => {
-    if (snapshot.hadClass) {
-      return {
-        ...edge,
-        class: snapshot.className
-      }
+    if (!element) {
+      element = document.createElement('style')
+      element.id = selectionMoveHiddenStyleId
+      document.head.append(element)
     }
 
-    const { class: _className, ...nextEdge } = edge
-
-    return nextEdge as FlowEdge
+    return element
   }
 
-  const clearSelectionMoveHiddenNodes = () => {
-    if (selectionMoveHiddenClassSnapshots.length === 0) {
+  const buildHiddenSelector = (className: string, ids: Set<string>) => {
+    return Array.from(ids, (id) =>
+      `.flow-canvas ${className}[data-id="${escapeCssAttributeValue(id)}"]`
+    ).join(',\n')
+  }
+
+  const syncSelectionMoveHiddenStyle = () => {
+    const rules: string[] = []
+    const nodeSelector = buildHiddenSelector('.vue-flow__node', selectionMoveHiddenNodeIds)
+    const edgeSelector = buildHiddenSelector('.vue-flow__edge', selectionMoveHiddenEdgeIds)
+
+    if (nodeSelector) {
+      rules.push(`${nodeSelector} { visibility: hidden !important; pointer-events: none !important; }`)
+    }
+
+    if (edgeSelector) {
+      rules.push(`${edgeSelector} { visibility: hidden !important; pointer-events: none !important; }`)
+    }
+
+    const styleElement = getSelectionMoveHiddenStyleElement()
+
+    if (styleElement) {
+      styleElement.textContent = rules.join('\n')
+    }
+
+    runtime.selectionMoveHiddenNodeIds.value = new Set(selectionMoveHiddenNodeIds)
+    runtime.selectionMoveHiddenEdgeIds.value = new Set(selectionMoveHiddenEdgeIds)
+  }
+
+  const clearSelectionMoveHiddenIds = () => {
+    if (selectionMoveHiddenNodeIds.size === 0 && selectionMoveHiddenEdgeIds.size === 0) {
       return
     }
 
-    const snapshotsById = new Map(
-      selectionMoveHiddenClassSnapshots.map((snapshot) => [snapshot.id, snapshot])
-    )
-    let changed = false
-    const nextNodes = (runtime.nodes.value as FlowNode[]).map((node) => {
-      const snapshot = snapshotsById.get(node.id)
-
-      if (!snapshot || !hasClassName(node.class, selectionDragHiddenClass)) {
-        return node
-      }
-
-      changed = true
-      return restoreNodeClass(node, snapshot)
-    })
-
-    selectionMoveHiddenClassSnapshots = []
-
-    if (changed) {
-      runtime.nodes.value = nextNodes
-    }
+    selectionMoveHiddenNodeIds = new Set()
+    selectionMoveHiddenEdgeIds = new Set()
+    syncSelectionMoveHiddenStyle()
   }
 
-  const clearSelectionMoveHiddenEdges = () => {
-    if (selectionMoveHiddenEdgeClassSnapshots.length === 0) {
-      return
-    }
+  const getSelectionMoveInternalEdgeIds = (hiddenIds: Set<string>) => {
+    const nextHiddenEdgeIds = new Set<string>()
 
-    const snapshotsById = new Map(
-      selectionMoveHiddenEdgeClassSnapshots.map((snapshot) => [snapshot.id, snapshot])
-    )
-    let changed = false
-    const nextEdges = (runtime.edges.value as FlowEdge[]).map((edge) => {
-      const snapshot = snapshotsById.get(edge.id)
-
-      if (!snapshot || !hasClassName(edge.class, selectionDragHiddenEdgeClass)) {
-        return edge
+    if (hiddenIds.size >= 2) {
+      for (const edge of runtime.edges.value as FlowEdge[]) {
+        if (hiddenIds.has(edge.source) && hiddenIds.has(edge.target)) {
+          nextHiddenEdgeIds.add(edge.id)
+        }
       }
-
-      changed = true
-      return restoreEdgeClass(edge, snapshot)
-    })
-
-    selectionMoveHiddenEdgeClassSnapshots = []
-
-    if (changed) {
-      runtime.edges.value = nextEdges
     }
+
+    return nextHiddenEdgeIds
   }
 
-  const hideSelectionMoveNodes = (hiddenIds: Set<string>) => {
-    clearSelectionMoveHiddenNodes()
-
-    if (hiddenIds.size === 0) {
-      return
-    }
-
-    const nextSnapshots: HiddenNodeClassSnapshot[] = []
-    let changed = false
-    const nextNodes = (runtime.nodes.value as FlowNode[]).map((node) => {
-      if (!hiddenIds.has(node.id)) {
-        return node
-      }
-
-      nextSnapshots.push({
-        id: node.id,
-        hadClass: Object.prototype.hasOwnProperty.call(node, 'class'),
-        className: node.class
-      })
-
-      const nextClassName = withClassName(node.class, selectionDragHiddenClass)
-
-      if (node.class === nextClassName) {
-        return node
-      }
-
-      changed = true
-
-      return {
-        ...node,
-        class: nextClassName
-      }
-    })
-
-    selectionMoveHiddenClassSnapshots = nextSnapshots
-
-    if (changed) {
-      runtime.nodes.value = nextNodes
-    }
-  }
-
-  const hideSelectionMoveInternalEdges = (hiddenIds: Set<string>) => {
-    clearSelectionMoveHiddenEdges()
-
-    if (hiddenIds.size < 2) {
-      return
-    }
-
-    const nextSnapshots: HiddenEdgeClassSnapshot[] = []
-    let changed = false
-    const nextEdges = (runtime.edges.value as FlowEdge[]).map((edge) => {
-      if (!hiddenIds.has(edge.source) || !hiddenIds.has(edge.target)) {
-        return edge
-      }
-
-      nextSnapshots.push({
-        id: edge.id,
-        hadClass: Object.prototype.hasOwnProperty.call(edge, 'class'),
-        className: edge.class
-      })
-
-      const nextClassName = withClassName(edge.class, selectionDragHiddenEdgeClass)
-
-      if (edge.class === nextClassName) {
-        return edge
-      }
-
-      changed = true
-
-      return {
-        ...edge,
-        class: nextClassName
-      }
-    })
-
-    selectionMoveHiddenEdgeClassSnapshots = nextSnapshots
-
-    if (changed) {
-      runtime.edges.value = nextEdges
-    }
+  const hideSelectionMoveIds = (hiddenIds: Set<string>) => {
+    selectionMoveHiddenNodeIds = new Set(hiddenIds)
+    selectionMoveHiddenEdgeIds = getSelectionMoveInternalEdgeIds(hiddenIds)
+    syncSelectionMoveHiddenStyle()
   }
 
   const hideBundleSelectionNodes = (selectionMoveDrag: SelectionMoveDrag) => {
     if (!hideSelectedNodesDuringBundleMove || selectionMoveDrag.mode !== 'bundle') {
-      clearSelectionMoveHiddenNodes()
-      clearSelectionMoveHiddenEdges()
+      clearSelectionMoveHiddenIds()
       return
     }
 
-    hideSelectionMoveNodes(selectionMoveDrag.hiddenIds)
-    hideSelectionMoveInternalEdges(selectionMoveDrag.hiddenIds)
+    hideSelectionMoveIds(selectionMoveDrag.hiddenIds)
   }
 
   const handleSectionNodeDragStart = (sectionId: string) => {
@@ -581,8 +489,7 @@ export const useSelectionMove = (
 
     if (!useLargeSectionPreview) {
       runtime.sectionNodeDragPreview.value = null
-      clearSelectionMoveHiddenNodes()
-      clearSelectionMoveHiddenEdges()
+      clearSelectionMoveHiddenIds()
       return
     }
 
@@ -599,8 +506,13 @@ export const useSelectionMove = (
       showSummary: true
     }
 
-    hideSelectionMoveNodes(descendantIds)
-    hideSelectionMoveInternalEdges(descendantIds)
+    const activeDrag = runtime.interaction.selectionMoveDrag
+
+    if (activeDrag?.mode === 'bundle' && activeDrag.movingIds.has(sectionId)) {
+      return
+    }
+
+    hideSelectionMoveIds(descendantIds)
   }
 
   const clearSectionNodeDragPreview = () => {
@@ -611,8 +523,7 @@ export const useSelectionMove = (
     }
 
     runtime.sectionNodeDragPreview.value = null
-    clearSelectionMoveHiddenNodes()
-    clearSelectionMoveHiddenEdges()
+    clearSelectionMoveHiddenIds()
   }
 
   const buildSectionDragCandidatesById = (
@@ -981,8 +892,7 @@ export const useSelectionMove = (
     }
 
     selectionMovePreviewElement = null
-    clearSelectionMoveHiddenNodes()
-    clearSelectionMoveHiddenEdges()
+    clearSelectionMoveHiddenIds()
   }
 
   const buildCommittedSelectionMoveNodes = (
@@ -1173,7 +1083,8 @@ export const useSelectionMove = (
   }
 
   const beginSelectionMove = (options: SelectionMoveStartOptions) => {
-    const normalizedOriginalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode)
+    const normalizedOriginalNodes =
+      options.normalizedOriginalNodes ?? (runtime.nodes.value as FlowNode[]).map(normalizeNode)
     const movingIds = options.movingIds
 
     if (movingIds.size === 0) {
@@ -1272,7 +1183,8 @@ export const useSelectionMove = (
       target,
       previewElement: getSelectionOutlineElement(event, target),
       movingIds,
-      selectedFlowBounds: getSelectionFlowBoundsSnapshot(selectedIds, normalizedOriginalNodes)
+      selectedFlowBounds: getSelectionFlowBoundsSnapshot(selectedIds, normalizedOriginalNodes),
+      normalizedOriginalNodes
     })
 
     if (!started) {
@@ -1407,7 +1319,7 @@ export const useSelectionMove = (
         : null,
       movingIds,
       selectedFlowBounds,
-      forceVisible: useSingleSectionPreview
+      normalizedOriginalNodes
     })
 
     if (!started) {
@@ -1415,7 +1327,6 @@ export const useSelectionMove = (
     }
 
     if (useSingleSectionPreview) {
-      handleSectionNodeDragStart(pending.nodeId)
       attachSelectionMovePreviewElementOnNextTick()
     }
 
@@ -1602,12 +1513,15 @@ export const useSelectionMove = (
 
     if (canSubmitPositionOnly) {
       submitPositionOnlySelectionMove(drag, nodeChanges)
-      refreshMovedSectionInternals(membershipResults)
       return true
     }
 
     runtime.nodes.value = services.withSelectionState(nextNodes.map(stripParentExtent) as FlowNode[])
-    runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges))
+
+    if (edgesChanged) {
+      runtime.edges.value = withDefaultEdges(nextEdges, createGraphCache(nextNodes, nextEdges))
+    }
+
     refreshMovedSectionInternals(membershipResults)
     services.submitOperation(
       [

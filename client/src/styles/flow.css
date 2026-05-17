@@ -108,8 +108,8 @@
 }
 
 .vue-flow__edge.selection-drag-hidden-edge {
-  opacity: 0;
-  pointer-events: none;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .vue-flow__handle {

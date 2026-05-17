@@ -56,6 +56,7 @@ export const useEditorViewModels = ({
     loginPasswordInput,
     nodes,
     pendingCreate,
+    selectionMoveHiddenEdgeIds,
     selectedNodeIds,
     status,
     userId
@@ -205,7 +206,8 @@ export const useEditorViewModels = ({
       },
       isLoggedIn,
       isValidSectionConnection: graphState.isValidSectionConnection,
-      nodes: nodes as typeof nodes & { value: FlowNode[] }
+      nodes: nodes as typeof nodes & { value: FlowNode[] },
+      selectionMoveHiddenEdgeIds
     },
     miniMap: {
       getMiniMapNodeColor,

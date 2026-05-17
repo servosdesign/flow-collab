@@ -127,6 +127,8 @@ export type FlowAppState = {
   currentViewport: Ref<FlowViewport>
   rightSelection: Ref<DragSelection | null>
   selectedNodeIds: Ref<Set<string>>
+  selectionMoveHiddenNodeIds: Ref<Set<string>>
+  selectionMoveHiddenEdgeIds: Ref<Set<string>>
   lassoPreviewNodeIds: Ref<Set<string>>
   duplicateCount: Ref<number>
   collaborators: Ref<SyncPresenceUser[]>

@@ -42,7 +42,7 @@ export const useSelectionOverlayModel = (
     const hasSelectionMoveBounds = Boolean(
       isMovingSelection &&
         selectionMoveDrag?.selectedFlowBounds &&
-        (sectionDragPreview || selectedNodeCount > 1)
+        (sectionDragPreview || selectedNodeCount > 1 || selectionMoveDrag.mode === 'bundle')
     )
 
     if (!hasSelectionMoveBounds && !sectionDragPreview && selectedNodeCount < 2) {

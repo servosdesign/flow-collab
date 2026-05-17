@@ -1,7 +1,12 @@
-import type { Connection as FlowConnection } from '@vue-flow/core'
+import type { ValidConnectionFunc } from '@vue-flow/core'
 import type { SyncEdge, SyncFlowDocument, SyncNode } from '@vue-flow-sync/shared'
 import type { JsonOp } from 'sharedb/lib/client'
 import type { FlowNode } from '../domain/graph'
+
+type SectionConnectionValidator = (
+  connection: Parameters<ValidConnectionFunc>[0],
+  elements?: Parameters<ValidConnectionFunc>[1]
+) => boolean
 
 export type ClientBounds = {
   left: number
@@ -21,7 +26,7 @@ export type FlowEditorServices = {
   getSelectedNodeIds: () => string[]
   getSyncNodeById: (nodeId?: string | null) => SyncNode | undefined
   isCanvasSelectionTarget: (target: EventTarget | null) => boolean
-  isValidSectionConnection: (connection: FlowConnection) => boolean
+  isValidSectionConnection: SectionConnectionValidator
   scheduleCursorUpdate: (position: { x: number, y: number }) => void
   scheduleGraphSnapshot: (delay?: number) => void
   scheduleSelectionBoundsRefresh: () => void
