@@ -103,6 +103,7 @@ export function useSelectionMove(
     if (sectionDragPreview) {
       return {
         active: true,
+        coverContents: sectionDragPreview.hideStrategy === "cover",
         ...sectionDragPreview.previewCounts,
         shapes: [{ id: 0, kind: "section" }] as SelectionMovePreviewShape[]
       };
@@ -117,6 +118,7 @@ export function useSelectionMove(
     ) {
       return {
         active: false,
+        coverContents: false,
         itemCount: 0,
         sectionCount: 0,
         containedCount: 0,
@@ -131,6 +133,7 @@ export function useSelectionMove(
 
     return {
       active: true,
+      coverContents: false,
       ...selectionMoveDrag.previewCounts,
       shapes
     };
@@ -549,13 +552,9 @@ export function useSelectionMove(
         containedCount: descendantIds.size,
         containedSectionCount: countSectionIds(descendantIds, graph)
       },
-      hiddenIds: descendantIds
+      hiddenIds: descendantIds,
+      hideStrategy: "cover"
     };
-    const internalEdgeNodeIds = new Set(descendantIds);
-    internalEdgeNodeIds.add(sectionId);
-
-    hideSelectionMoveNodes(descendantIds);
-    hideSelectionMoveInternalEdges(internalEdgeNodeIds);
   }
 
   function clearSectionNodeDragPreview() {

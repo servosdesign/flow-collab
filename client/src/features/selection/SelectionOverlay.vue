@@ -113,12 +113,20 @@ function previewSecondaryLabel() {
   <div
     v-if="selectedBoundsStyle"
     class="selected-nodes-outline"
-    :class="{ 'selection-preview-active': selectionMovePreview.active }"
+    :class="{
+      'selection-preview-active': selectionMovePreview.active,
+      'selection-preview-cover': selectionMovePreview.coverContents
+    }"
     :style="selectedBoundsStyle"
     @pointerdown="handleSelectedBoundsPointerDown"
     @contextmenu="openSelectedBoundsContextMenu"
     @wheel="handleSelectedBoundsWheel"
   >
+    <span
+      v-if="selectionMovePreview.coverContents"
+      class="selection-move-preview-cover"
+      aria-hidden="true"
+    ></span>
     <div
       v-if="selectionMovePreview.active"
       class="selection-move-preview-content"

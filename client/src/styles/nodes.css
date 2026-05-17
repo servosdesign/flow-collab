@@ -29,7 +29,7 @@
 }
 
 .vue-flow__node.selection-drag-hidden {
-  visibility: hidden !important;
+  opacity: 0 !important;
   pointer-events: none !important;
 }
 

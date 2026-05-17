@@ -47,6 +47,7 @@ export type SectionNodeDragPreview = {
   sectionId: string;
   previewCounts: SelectionMovePreviewCounts;
   hiddenIds: Set<string>;
+  hideStrategy: "cover";
 };
 
 export type SelectionMoveRuntimeSnapshot = {
