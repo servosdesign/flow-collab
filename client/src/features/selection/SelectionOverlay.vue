@@ -105,6 +105,7 @@ function previewSecondaryLabel() {
     <span
       v-for="rect in lassoPreviewRects"
       :key="rect.id"
+      v-memo="[rect.id, rect.style]"
       class="lasso-preview-node"
       :style="rect.style"
     ></span>
@@ -135,6 +136,7 @@ function previewSecondaryLabel() {
       <span
         v-for="shape in selectionMovePreview.shapes"
         :key="shape.id"
+        v-memo="[shape.id, shape.kind]"
         class="selection-move-preview-shape"
         :class="`selection-move-preview-shape-${shape.kind}`"
       ></span>

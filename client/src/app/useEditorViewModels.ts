@@ -242,6 +242,7 @@ export function useEditorViewModels({
       uploadImage: nodeActions.uploadImage
     },
     presenceCursors: {
+      currentViewport,
       getCursorStyle: presence.getCursorStyle,
       remoteCursors: presence.remoteCursors
     },

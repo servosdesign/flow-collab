@@ -27,6 +27,15 @@ const {
 
 <template>
   <RegularNode
+    v-memo="[
+      id,
+      data,
+      !isLassoSelecting && isNodeSelected(id),
+      shouldShowNodeResizer(id),
+      getSelectedUsersForNode(id),
+      getNodeResizerZoom(id),
+      !isLoggedIn
+    ]"
     :id="id"
     :data="data"
     :selected="!isLassoSelecting && isNodeSelected(id)"

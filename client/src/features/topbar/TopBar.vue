@@ -57,6 +57,7 @@ const {
       <span
         v-for="user in visibleCollaborators"
         :key="user.id"
+        v-memo="[user.id, user.name, user.color]"
         class="user-chip"
         :title="user.name"
         :style="{ backgroundColor: user.color }"

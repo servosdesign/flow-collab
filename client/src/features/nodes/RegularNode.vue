@@ -160,6 +160,7 @@ const MiniGauge = defineComponent({
       <span
         v-for="user in selectedUsers"
         :key="user.id"
+        v-memo="[user.id, user.name, user.color]"
         class="node-presence-chip"
         :title="`${user.name} selected this node`"
         :style="{ backgroundColor: user.color }"

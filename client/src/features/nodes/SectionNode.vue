@@ -69,6 +69,7 @@ function userInitials(name: string) {
       <span
         v-for="user in selectedUsers"
         :key="user.id"
+        v-memo="[user.id, user.name, user.color]"
         class="node-presence-chip"
         :title="`${user.name} selected this section`"
         :style="{ backgroundColor: user.color }"
