@@ -1,5 +1,5 @@
 import type { NodeChange, NodeDragItem } from '@vue-flow/core'
-import type { SyncNode } from '@vue-flow-sync/shared'
+import type { FlowViewport, SyncNode } from '@vue-flow-sync/shared'
 import { computed, nextTick } from 'vue'
 import type { JsonOp } from 'sharedb/lib/client'
 import type { FlowEditorServices } from '../../app/flowEditorServices'
@@ -39,6 +39,9 @@ const selectionBoundsPadding = 4
 const sectionDragClass = 'section-dragging'
 const sectionDragOverLargerClass = 'section-drag-over-larger-section'
 const selectionMoveHiddenStyleId = 'vue-flow-sync-selection-move-hidden'
+const selectionMoveMinZoom = 0.15
+const selectionMoveMaxZoom = 1.4
+const selectionMoveWheelZoomStep = 0.002
 
 type UseSelectionMoveOptions = {
   getSelectedNodeIds: () => string[]
@@ -77,6 +80,31 @@ type SelectionMoveStartOptions = {
   selectedFlowBounds: SelectionMoveDrag['selectedFlowBounds']
   normalizedOriginalNodes?: SyncNode[]
   forceVisible?: boolean
+  hiddenIds?: Set<string>
+  previewCounts?: SelectionMovePreviewCounts
+  previewShapeKinds?: SelectionMovePreviewShapeKind[]
+  movingIndexes?: number[]
+  mode?: SelectionMoveDrag['mode']
+  dragMetadata?: SelectionMoveDragMetadata
+}
+
+type SelectionMoveDragMetadata = {
+  dragItems: NodeDragItem[]
+  originalPositionsById: Map<string, { x: number, y: number }>
+  runtimeSnapshotsById: Map<string, SelectionMoveRuntimeSnapshot>
+  sectionDragCandidatesById: Map<string, SectionDragCandidateBounds[]>
+}
+
+type SingleSectionMoveStartMetadata = {
+  syncSection: SyncNode
+  movingIds: Set<string>
+  hiddenIds: Set<string>
+  previewCounts: SelectionMovePreviewCounts
+  previewShapeKinds: SelectionMovePreviewShapeKind[]
+  movingIndexes: number[]
+  mode: SelectionMoveDrag['mode']
+  selectedFlowBounds: SelectionMoveDrag['selectedFlowBounds']
+  dragMetadata: SelectionMoveDragMetadata
 }
 
 type PendingNodePointerMove = {
@@ -86,6 +114,7 @@ type PendingNodePointerMove = {
   startClientY: number
   target: HTMLElement | null
   pendingSelectionNodeId?: string
+  singleSectionMove?: SingleSectionMoveStartMetadata
 }
 
 type BeginNodePointerMoveOptions = {
@@ -184,6 +213,40 @@ export const useSelectionMove = (
     )
   }
 
+  const getSingleSelectedTopLevelSectionNode = (selectedIds: string[]) => {
+    const selectedIdSet = new Set(selectedIds)
+    const runtimeNodes = runtime.nodes.value as RuntimePositionedFlowNode[]
+    const nodeById = new Map(runtimeNodes.map((node) => [node.id, node]))
+    const topLevelSelectedIds: string[] = []
+
+    selectedIds.forEach((nodeId) => {
+      const node = nodeById.get(nodeId)
+      let parentId = node?.parentNode
+      let hasSelectedAncestor = false
+
+      while (parentId) {
+        if (selectedIdSet.has(parentId)) {
+          hasSelectedAncestor = true
+          break
+        }
+
+        parentId = nodeById.get(parentId)?.parentNode
+      }
+
+      if (!hasSelectedAncestor) {
+        topLevelSelectedIds.push(nodeId)
+      }
+    })
+
+    if (topLevelSelectedIds.length !== 1) {
+      return null
+    }
+
+    const sectionNode = nodeById.get(topLevelSelectedIds[0])
+
+    return sectionNode && isSectionFlowNode(sectionNode) ? sectionNode : null
+  }
+
   const addDescendantIds = (nodeId: string, graph: ReturnType<typeof createGraphCache>, ids: Set<string>) => {
     const children = graph.childrenByParentId.get(nodeId) ?? []
 
@@ -207,6 +270,55 @@ export const useSelectionMove = (
     })
 
     return count
+  }
+
+  const isSectionFlowNode = (node: FlowNode) => node.type === 'section' || node.data?.nodeType === 'section'
+
+  const buildRuntimeChildrenByParentId = () => {
+    const childrenByParentId = new Map<string, FlowNode[]>()
+
+    for (const node of runtime.nodes.value as FlowNode[]) {
+      if (!node.parentNode) {
+        continue
+      }
+
+      const children = childrenByParentId.get(node.parentNode) ?? []
+      children.push(node)
+      childrenByParentId.set(node.parentNode, children)
+    }
+
+    return childrenByParentId
+  }
+
+  const buildRuntimeSectionHiddenIds = (sectionId: string) => {
+    const childrenByParentId = buildRuntimeChildrenByParentId()
+    const hiddenIds = new Set([sectionId])
+    let containedSectionCount = 0
+
+    const addDescendants = (nodeId: string) => {
+      const children = childrenByParentId.get(nodeId) ?? []
+
+      children.forEach((child) => {
+        if (hiddenIds.has(child.id)) {
+          return
+        }
+
+        hiddenIds.add(child.id)
+
+        if (isSectionFlowNode(child)) {
+          containedSectionCount += 1
+        }
+
+        addDescendants(child.id)
+      })
+    }
+
+    addDescendants(sectionId)
+
+    return {
+      hiddenIds,
+      containedSectionCount
+    }
   }
 
   const buildSelectionMoveHiddenIds = (allNodes: SyncNode[], movingIds: Set<string>) => {
@@ -315,13 +427,116 @@ export const useSelectionMove = (
     return runtime.canvasPanel.value?.querySelector<HTMLElement>(selector) ?? null
   }
 
-  const getSelectionMoveDelta = (selectionMoveDrag: SelectionMoveDrag) => {
-    const viewport = runtime.currentViewport.value
+  const getClientPointInFlow = (
+    clientX: number,
+    clientY: number,
+    viewport: FlowViewport = runtime.currentViewport.value
+  ) => {
+    const bounds = runtime.canvasClientBounds.value
+
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0 || viewport.zoom <= 0) {
+      return runtime.screenToFlowCoordinate({ x: clientX, y: clientY })
+    }
 
     return {
-      x: (selectionMoveDrag.currentClientX - selectionMoveDrag.startClientX) / viewport.zoom,
-      y: (selectionMoveDrag.currentClientY - selectionMoveDrag.startClientY) / viewport.zoom
+      x: (clientX - bounds.left - viewport.x) / viewport.zoom,
+      y: (clientY - bounds.top - viewport.y) / viewport.zoom
     }
+  }
+
+  const getInitialSelectionMoveGraphState = (
+    startClientX: number,
+    startClientY: number,
+    currentClientX: number,
+    currentClientY: number
+  ) => {
+    const startViewport = { ...runtime.currentViewport.value }
+    const startPointerGraph = getClientPointInFlow(startClientX, startClientY, startViewport)
+    const currentPointerGraph = getClientPointInFlow(currentClientX, currentClientY)
+    const currentGraphDelta = {
+      x: currentPointerGraph.x - startPointerGraph.x,
+      y: currentPointerGraph.y - startPointerGraph.y
+    }
+
+    return {
+      startViewport,
+      startPointerGraph,
+      currentPointerGraph,
+      currentGraphDelta
+    }
+  }
+
+  const syncSelectionMoveGraphDelta = (
+    selectionMoveDrag: SelectionMoveDrag,
+    clientX = selectionMoveDrag.currentClientX,
+    clientY = selectionMoveDrag.currentClientY
+  ) => {
+    const currentPointerGraph = getClientPointInFlow(clientX, clientY)
+
+    selectionMoveDrag.currentClientX = clientX
+    selectionMoveDrag.currentClientY = clientY
+    selectionMoveDrag.currentPointerGraph = currentPointerGraph
+    selectionMoveDrag.currentGraphDelta = {
+      x: currentPointerGraph.x - selectionMoveDrag.startPointerGraph.x,
+      y: currentPointerGraph.y - selectionMoveDrag.startPointerGraph.y
+    }
+  }
+
+  const getSelectionMoveDelta = (selectionMoveDrag: SelectionMoveDrag) => {
+    return selectionMoveDrag.currentGraphDelta
+  }
+
+  const getRuntimeNodeAbsolutePosition = (
+    node: RuntimePositionedFlowNode,
+    seenIds = new Set<string>()
+  ) : { x: number, y: number } => {
+    if (
+      typeof node.computedPosition?.x === 'number' &&
+      typeof node.computedPosition.y === 'number'
+    ) {
+      return {
+        x: node.computedPosition.x,
+        y: node.computedPosition.y
+      }
+    }
+
+    if (!node.parentNode || seenIds.has(node.id)) {
+      return {
+        x: Math.round(node.position.x),
+        y: Math.round(node.position.y)
+      }
+    }
+
+    seenIds.add(node.id)
+
+    const parent = runtime.findNode(node.parentNode) as RuntimePositionedFlowNode | undefined
+    const parentPosition = parent
+      ? getRuntimeNodeAbsolutePosition(parent, seenIds)
+      : { x: 0, y: 0 }
+
+    return {
+      x: Math.round(parentPosition.x + node.position.x),
+      y: Math.round(parentPosition.y + node.position.y)
+    }
+  }
+
+  const getRuntimeNodeDimensions = (node: RuntimePositionedFlowNode, syncNode: SyncNode) => {
+    const measured = node as RuntimePositionedFlowNode & {
+      dimensions?: { width?: number, height?: number }
+    }
+    const width = measured.dimensions?.width
+    const height = measured.dimensions?.height
+
+    if (
+      typeof width === 'number' &&
+      Number.isFinite(width) &&
+      typeof height === 'number' &&
+      Number.isFinite(height)
+    ) {
+      return { width, height }
+    }
+
+    return getNodeSize(syncNode, syncNode.type === 'section' ? 720 : 240, syncNode.type === 'section' ? 620 : 190)
   }
 
   const hasTransformOnlyVisiblePreview = (selectionMoveDrag: SelectionMoveDrag) => {
@@ -331,6 +546,7 @@ export const useSelectionMove = (
   const markSelectionMovePreviewPainted = (selectionMoveDrag: SelectionMoveDrag) => {
     selectionMoveDrag.lastPaintedClientX = selectionMoveDrag.currentClientX
     selectionMoveDrag.lastPaintedClientY = selectionMoveDrag.currentClientY
+    selectionMoveDrag.lastPaintedGraphDelta = { ...selectionMoveDrag.currentGraphDelta }
     selectionMoveDrag.hasPaintedPreview = true
   }
 
@@ -576,6 +792,10 @@ export const useSelectionMove = (
   }
 
   const handleSectionNodeDragStart = (sectionId: string) => {
+    if (runtime.interaction.selectionMoveDrag) {
+      return
+    }
+
     const allNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode)
     const graph = createGraphCache(allNodes)
     const section = graph.nodeById.get(sectionId)
@@ -625,12 +845,6 @@ export const useSelectionMove = (
       hiddenIds: descendantIds,
       hideStrategy: 'cover',
       showSummary: true
-    }
-
-    const activeDrag = runtime.interaction.selectionMoveDrag
-
-    if (activeDrag?.mode === 'bundle' && activeDrag.movingIds.has(sectionId)) {
-      return
     }
 
     hideSelectionMoveIds(descendantIds)
@@ -1004,8 +1218,10 @@ export const useSelectionMove = (
 
   const paintSelectionMovePreview = (selectionMoveDrag: SelectionMoveDrag) => {
     const element = selectionMovePreviewElement
-    const deltaX = selectionMoveDrag.currentClientX - selectionMoveDrag.startClientX
-    const deltaY = selectionMoveDrag.currentClientY - selectionMoveDrag.startClientY
+    const viewport = runtime.currentViewport.value
+    const delta = getSelectionMoveDelta(selectionMoveDrag)
+    const deltaX = delta.x * viewport.zoom
+    const deltaY = delta.y * viewport.zoom
 
     if (element) {
       element.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0)`
@@ -1188,7 +1404,13 @@ export const useSelectionMove = (
   const scheduleSelectionMoveFrame = () => {
     const selectionMoveDrag = runtime.interaction.selectionMoveDrag
 
-    if (!selectionMoveDrag || selectionMoveDrag.frame) {
+    if (!selectionMoveDrag) {
+      return
+    }
+
+    syncSelectionMoveGraphDelta(selectionMoveDrag)
+
+    if (selectionMoveDrag.frame) {
       return
     }
 
@@ -1219,6 +1441,78 @@ export const useSelectionMove = (
     selectionMoveDrag.frame = undefined
   }
 
+  const clampSelectionMoveZoom = (zoom: number) => {
+    return Math.min(selectionMoveMaxZoom, Math.max(selectionMoveMinZoom, zoom))
+  }
+
+  const getNormalizedWheelDeltaY = (event: WheelEvent) => {
+    if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+      return event.deltaY * 16
+    }
+
+    if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+      return event.deltaY * 800
+    }
+
+    return event.deltaY
+  }
+
+  const handleSelectionMoveWheel = (event: WheelEvent) => {
+    const drag = runtime.interaction.selectionMoveDrag
+    const panelBounds = runtime.canvasPanel.value?.getBoundingClientRect()
+
+    if (!drag || !panelBounds || !runtime.isLoggedIn.value) {
+      return false
+    }
+
+    const pointerInsidePanel =
+      event.clientX >= panelBounds.left &&
+      event.clientX <= panelBounds.right &&
+      event.clientY >= panelBounds.top &&
+      event.clientY <= panelBounds.bottom
+
+    if (!pointerInsidePanel) {
+      return false
+    }
+
+    event.preventDefault()
+    event.stopImmediatePropagation()
+
+    const currentViewport = runtime.currentViewport.value
+    const currentZoom = Math.max(0.001, currentViewport.zoom)
+    const wheelDeltaY = getNormalizedWheelDeltaY(event)
+    const nextZoom = clampSelectionMoveZoom(
+      currentZoom * 2 ** (-wheelDeltaY * selectionMoveWheelZoomStep)
+    )
+
+    if (Math.abs(nextZoom - currentZoom) < 0.0001) {
+      return true
+    }
+
+    const anchorClientX = drag.currentClientX
+    const anchorClientY = drag.currentClientY
+    const anchorGraphPoint = getClientPointInFlow(anchorClientX, anchorClientY, currentViewport)
+    const localAnchorX = anchorClientX - panelBounds.left
+    const localAnchorY = anchorClientY - panelBounds.top
+    const nextViewport = {
+      x: localAnchorX - anchorGraphPoint.x * nextZoom,
+      y: localAnchorY - anchorGraphPoint.y * nextZoom,
+      zoom: nextZoom
+    }
+
+    runtime.currentViewport.value = nextViewport
+    void runtime.setViewport(nextViewport)
+    syncSelectionMoveGraphDelta(drag)
+    scheduleSelectionMoveFrame()
+    services.scheduleSelectionBoundsRefresh()
+
+    return true
+  }
+
+  const handleActiveSelectionMoveWheel = (event: WheelEvent) => {
+    handleSelectionMoveWheel(event)
+  }
+
   const settleVisibleDragAtLastPaintedPosition = (selectionMoveDrag: SelectionMoveDrag) => {
     if (!hasTransformOnlyVisiblePreview(selectionMoveDrag) || !selectionMoveDrag.hasPaintedPreview) {
       return false
@@ -1227,6 +1521,11 @@ export const useSelectionMove = (
     cancelSelectionMoveFrame(selectionMoveDrag)
     selectionMoveDrag.currentClientX = selectionMoveDrag.lastPaintedClientX
     selectionMoveDrag.currentClientY = selectionMoveDrag.lastPaintedClientY
+    selectionMoveDrag.currentGraphDelta = { ...selectionMoveDrag.lastPaintedGraphDelta }
+    selectionMoveDrag.currentPointerGraph = {
+      x: selectionMoveDrag.startPointerGraph.x + selectionMoveDrag.currentGraphDelta.x,
+      y: selectionMoveDrag.startPointerGraph.y + selectionMoveDrag.currentGraphDelta.y
+    }
     bumpSelectionMovePreviewVersion()
 
     return true
@@ -1241,25 +1540,37 @@ export const useSelectionMove = (
       return false
     }
 
-    const hiddenIds = buildSelectionMoveHiddenIds(normalizedOriginalNodes, movingIds)
-    const { counts: previewCounts, shapeKinds: previewShapeKinds } =
-      buildSelectionMovePreviewMetadata(normalizedOriginalNodes, movingIds, hiddenIds)
-    const movingIndexes = normalizedOriginalNodes
+    const hiddenIds = options.hiddenIds ?? buildSelectionMoveHiddenIds(normalizedOriginalNodes, movingIds)
+    const previewMetadata = options.previewCounts && options.previewShapeKinds
+      ? {
+        counts: options.previewCounts,
+        shapeKinds: options.previewShapeKinds
+      }
+      : buildSelectionMovePreviewMetadata(normalizedOriginalNodes, movingIds, hiddenIds)
+    const movingIndexes = options.movingIndexes ?? normalizedOriginalNodes
       .map((node, index) => (movingIds.has(node.id) ? index : -1))
       .filter((index) => index >= 0)
-    const mode =
+    const mode = options.mode ?? (
       !options.forceVisible &&
       largeSelectionMovePreviewMode === 'bundle' &&
       hiddenIds.size > largeSelectionMovePreviewThreshold
         ? 'bundle'
         : 'visible'
+    )
     const originalSyncNodesById = new Map(normalizedOriginalNodes.map((node) => [node.id, node]))
+    const dragMetadata = options.dragMetadata ?? buildSelectionMoveDragMetadata(normalizedOriginalNodes, movingIds)
     const {
       dragItems,
       originalPositionsById,
       runtimeSnapshotsById,
       sectionDragCandidatesById
-    } = buildSelectionMoveDragMetadata(normalizedOriginalNodes, movingIds)
+    } = dragMetadata
+    const graphState = getInitialSelectionMoveGraphState(
+      options.startClientX,
+      options.startClientY,
+      options.currentClientX,
+      options.currentClientY
+    )
 
     if (dragItems.length === 0 || movingIndexes.length === 0) {
       return false
@@ -1279,15 +1590,21 @@ export const useSelectionMove = (
         selectionMovePointerCaptureTarget = null
       }
     }
+    window.addEventListener('wheel', handleActiveSelectionMoveWheel, { capture: true, passive: false })
 
     runtime.interaction.selectionMoveDrag = {
       mode,
+      startViewport: graphState.startViewport,
       startClientX: options.startClientX,
       startClientY: options.startClientY,
       currentClientX: options.currentClientX,
       currentClientY: options.currentClientY,
       lastPaintedClientX: options.currentClientX,
       lastPaintedClientY: options.currentClientY,
+      startPointerGraph: graphState.startPointerGraph,
+      currentPointerGraph: graphState.currentPointerGraph,
+      currentGraphDelta: graphState.currentGraphDelta,
+      lastPaintedGraphDelta: { ...graphState.currentGraphDelta },
       hasPaintedPreview: false,
       originalSyncNodes: normalizedOriginalNodes,
       originalSyncNodesById,
@@ -1298,8 +1615,8 @@ export const useSelectionMove = (
       movingIds,
       movingIndexes,
       hiddenIds,
-      previewCounts,
-      previewShapeKinds,
+      previewCounts: previewMetadata.counts,
+      previewShapeKinds: previewMetadata.shapeKinds,
       selectedFlowBounds: options.selectedFlowBounds
     }
     hideBundleSelectionNodes(runtime.interaction.selectionMoveDrag)
@@ -1325,9 +1642,43 @@ export const useSelectionMove = (
     event.stopPropagation()
     services.closeContextMenu()
 
+    const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+    const topLevelSectionNode = getSingleSelectedTopLevelSectionNode(selectedIds)
+    const sectionMetadata = topLevelSectionNode
+      ? buildSingleSectionMoveStartMetadata(topLevelSectionNode)
+      : null
+
+    if (sectionMetadata) {
+      const started = beginSelectionMove({
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        currentClientX: event.clientX,
+        currentClientY: event.clientY,
+        pointerId: event.pointerId,
+        target,
+        previewElement: getSelectionOutlineElement(event, target),
+        movingIds: sectionMetadata.movingIds,
+        selectedFlowBounds: sectionMetadata.selectedFlowBounds,
+        normalizedOriginalNodes: [sectionMetadata.syncSection],
+        hiddenIds: sectionMetadata.hiddenIds,
+        previewCounts: sectionMetadata.previewCounts,
+        previewShapeKinds: sectionMetadata.previewShapeKinds,
+        movingIndexes: sectionMetadata.movingIndexes,
+        mode: sectionMetadata.mode,
+        dragMetadata: sectionMetadata.dragMetadata
+      })
+
+      if (!started) {
+        return
+      }
+
+      window.addEventListener('pointermove', handleSelectedBoundsPointerMove, { capture: true })
+      window.addEventListener('pointerup', handleSelectedBoundsPointerUp, { capture: true, once: true })
+      return
+    }
+
     const normalizedOriginalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode)
     const movingIds = getMovableSelectedIds(normalizedOriginalNodes)
-    const target = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
 
     const started = beginSelectionMove({
       startClientX: event.clientX,
@@ -1363,14 +1714,17 @@ export const useSelectionMove = (
 
     event.preventDefault()
     event.stopImmediatePropagation()
-    selectionMoveDrag.currentClientX = event.clientX
-    selectionMoveDrag.currentClientY = event.clientY
+    syncSelectionMoveGraphDelta(selectionMoveDrag, event.clientX, event.clientY)
     scheduleSelectionMoveFrame()
   }
 
   const clearSelectionMovePresentation = (restoreVisibleDragTransforms = true) => {
     clearSelectionMovePreview(restoreVisibleDragTransforms)
     clearSectionNodeDragPreview()
+  }
+
+  const removeSelectionMoveWheelListener = () => {
+    window.removeEventListener('wheel', handleActiveSelectionMoveWheel, true)
   }
 
   const finishSelectionMovePointerUp = (event: PointerEvent) => {
@@ -1380,8 +1734,7 @@ export const useSelectionMove = (
 
     const drag = runtime.interaction.selectionMoveDrag
     if (drag) {
-      drag.currentClientX = event.clientX
-      drag.currentClientY = event.clientY
+      syncSelectionMoveGraphDelta(drag, event.clientX, event.clientY)
     }
     if (!drag || !settleVisibleDragAtLastPaintedPosition(drag)) {
       flushSelectionMoveFrame()
@@ -1391,6 +1744,7 @@ export const useSelectionMove = (
     }
     selectionMovePointerCaptureTarget = null
     selectionMovePointerId = null
+    removeSelectionMoveWheelListener()
 
     if (!drag) {
       runtime.interaction.selectionMoveDrag = null
@@ -1453,6 +1807,109 @@ export const useSelectionMove = (
     })
   }
 
+  const buildSingleSectionDragMetadata = (
+    sectionNode: RuntimePositionedFlowNode,
+    syncSection: SyncNode,
+    movingIds: Set<string>
+  ) : SelectionMoveDragMetadata => {
+    const absolutePosition = getRuntimeNodeAbsolutePosition(sectionNode)
+    const dimensions = getRuntimeNodeDimensions(sectionNode, syncSection)
+    const dragItem: NodeDragItem = {
+      id: syncSection.id,
+      position: { ...absolutePosition },
+      distance: { x: 0, y: 0 },
+      dimensions,
+      from: { ...absolutePosition },
+      extent: sectionNode.extent,
+      parentNode: syncSection.parentNode,
+      expandParent: syncSection.expandParent ?? sectionNode.expandParent
+    }
+
+    return {
+      dragItems: [dragItem],
+      originalPositionsById: new Map([[syncSection.id, absolutePosition]]),
+      runtimeSnapshotsById: buildSelectionMoveRuntimeSnapshots(movingIds),
+      sectionDragCandidatesById: new Map()
+    }
+  }
+
+  const buildSingleSectionMoveStartMetadata = (
+    sectionNode: RuntimePositionedFlowNode
+  ) : SingleSectionMoveStartMetadata | null => {
+    const syncSection = normalizeNode(sectionNode)
+
+    if (syncSection.type !== 'section') {
+      return null
+    }
+
+    const movingIds = new Set([syncSection.id])
+    const { hiddenIds, containedSectionCount } = buildRuntimeSectionHiddenIds(syncSection.id)
+    const dragMetadata = buildSingleSectionDragMetadata(sectionNode, syncSection, movingIds)
+    const sectionPosition = dragMetadata.originalPositionsById.get(syncSection.id) ?? {
+      x: Math.round(syncSection.position.x),
+      y: Math.round(syncSection.position.y)
+    }
+    const sectionDimensions = dragMetadata.dragItems[0]?.dimensions ?? getRuntimeNodeDimensions(sectionNode, syncSection)
+    const previewCounts: SelectionMovePreviewCounts = {
+      itemCount: 0,
+      sectionCount: 1,
+      containedCount: Math.max(0, hiddenIds.size - movingIds.size),
+      containedSectionCount
+    }
+    const mode: SelectionMoveDrag['mode'] =
+      largeSelectionMovePreviewMode === 'bundle' &&
+      hiddenIds.size > largeSelectionMovePreviewThreshold
+        ? 'bundle'
+        : 'visible'
+
+    return {
+      syncSection,
+      movingIds,
+      hiddenIds,
+      previewCounts,
+      previewShapeKinds: ['section'],
+      movingIndexes: [0],
+      mode,
+      selectedFlowBounds: {
+        ...sectionPosition,
+        ...sectionDimensions,
+        padding: selectionBoundsPadding
+      },
+      dragMetadata
+    }
+  }
+
+  const beginSingleSectionMove = (
+    event: PointerEvent,
+    pending: PendingNodePointerMove,
+    sectionNode: RuntimePositionedFlowNode
+  ) => {
+    const metadata = pending.singleSectionMove ?? buildSingleSectionMoveStartMetadata(sectionNode)
+
+    if (!metadata) {
+      return false
+    }
+
+    return beginSelectionMove({
+      startClientX: pending.startClientX,
+      startClientY: pending.startClientY,
+      currentClientX: event.clientX,
+      currentClientY: event.clientY,
+      pointerId: pending.pointerId,
+      target: pending.target,
+      previewElement: null,
+      movingIds: metadata.movingIds,
+      selectedFlowBounds: metadata.selectedFlowBounds,
+      normalizedOriginalNodes: [metadata.syncSection],
+      hiddenIds: metadata.hiddenIds,
+      previewCounts: metadata.previewCounts,
+      previewShapeKinds: metadata.previewShapeKinds,
+      movingIndexes: metadata.movingIndexes,
+      mode: metadata.mode,
+      dragMetadata: metadata.dragMetadata
+    })
+  }
+
   const startPendingNodePointerMove = (event: PointerEvent, pending: PendingNodePointerMove) => {
     const selectedIds = options.getSelectedNodeIds()
     const selectedIdSet = new Set(selectedIds)
@@ -1461,6 +1918,20 @@ export const useSelectionMove = (
 
     if (!runtimeNode) {
       return false
+    }
+
+    if (!moveSelection && isSectionFlowNode(runtimeNode)) {
+      const started = beginSingleSectionMove(event, pending, runtimeNode as RuntimePositionedFlowNode)
+
+      if (!started) {
+        return false
+      }
+
+      activePendingSelectionNodeId = pending.pendingSelectionNodeId ?? null
+      attachSelectionMovePreviewElementOnNextTick()
+      runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350
+
+      return true
     }
 
     const pendingNode = normalizeNode(runtimeNode)
@@ -1610,6 +2081,7 @@ export const useSelectionMove = (
     const pendingSelectionNodeId = pending?.pendingSelectionNodeId ?? activePendingSelectionNodeId
     activePendingSelectionNodeId = null
     clearPendingNodePointerMove(event)
+    removeSelectionMoveWheelListener()
     if (runtime.interaction.selectionMoveDrag?.frame) {
       window.cancelAnimationFrame(runtime.interaction.selectionMoveDrag.frame)
       runtime.interaction.selectionMoveDrag.frame = undefined
@@ -1645,6 +2117,13 @@ export const useSelectionMove = (
     const target = event.target instanceof Element
       ? event.target.closest<HTMLElement>('.vue-flow__node[data-id]')
       : null
+    const selectedIds = options.getSelectedNodeIds()
+    const selectedIdSet = new Set(selectedIds)
+    const moveSelection = selectedIds.length > 1 && selectedIdSet.has(nodeId)
+    const runtimeNode = runtime.findNode(nodeId) as RuntimePositionedFlowNode | undefined
+    const singleSectionMove = !moveSelection && runtimeNode && isSectionFlowNode(runtimeNode)
+      ? buildSingleSectionMoveStartMetadata(runtimeNode)
+      : undefined
 
     pendingNodePointerMove = {
       nodeId,
@@ -1652,7 +2131,8 @@ export const useSelectionMove = (
       startClientX: event.clientX,
       startClientY: event.clientY,
       target,
-      pendingSelectionNodeId: optionsOverride.pendingSelectionNodeId
+      pendingSelectionNodeId: optionsOverride.pendingSelectionNodeId,
+      singleSectionMove: singleSectionMove ?? undefined
     }
     selectionMovePointerCaptureTarget = target
     selectionMovePointerId = event.pointerId
@@ -1744,6 +2224,7 @@ export const useSelectionMove = (
     window.removeEventListener('pointermove', handleNodePointerMove, true)
     window.removeEventListener('pointerup', handleNodePointerUp, true)
     window.removeEventListener('pointercancel', handleNodePointerCancel, true)
+    removeSelectionMoveWheelListener()
     if (runtime.interaction.selectionMoveDrag?.frame) {
       window.cancelAnimationFrame(runtime.interaction.selectionMoveDrag.frame)
       runtime.interaction.selectionMoveDrag.frame = undefined
@@ -1774,6 +2255,7 @@ export const useSelectionMove = (
     cleanupSelectionMove,
     clearSectionNodeDragPreview,
     beginNodePointerMove,
+    handleSelectionMoveWheel,
     handleSelectedBoundsPointerDown,
     handleSectionNodeDragStart,
     selectionMovePreview

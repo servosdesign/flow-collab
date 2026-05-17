@@ -257,6 +257,7 @@ export const useEditorViewModels = ({
       remoteCursors: presence.remoteCursors
     },
     selectionOverlay: {
+      handleSelectionMoveWheel: selection.handleSelectionMoveWheel,
       handleSelectedBoundsPointerDown: selection.handleSelectedBoundsPointerDown,
       lassoPreviewRects: selection.lassoPreviewRects,
       openSelectedBoundsContextMenu: contextMenu.openSelectedBoundsContextMenu,

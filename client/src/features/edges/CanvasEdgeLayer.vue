@@ -259,11 +259,9 @@ const getSelectionMoveDelta = () => {
     return null
   }
 
-  const zoom = Math.max(0.001, viewport.value.zoom)
-
   return {
-    x: (drag.currentClientX - drag.startClientX) / zoom,
-    y: (drag.currentClientY - drag.startClientY) / zoom
+    x: drag.currentGraphDelta.x,
+    y: drag.currentGraphDelta.y
   }
 }
 

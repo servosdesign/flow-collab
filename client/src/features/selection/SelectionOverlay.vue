@@ -2,6 +2,7 @@
 import { useSelectionOverlayContext } from '../../app/flowEditorContext'
 
 const {
+  handleSelectionMoveWheel,
   handleSelectedBoundsPointerDown,
   lassoPreviewRects,
   openSelectedBoundsContextMenu,
@@ -34,6 +35,10 @@ const createForwardedWheelEvent = (event: WheelEvent) => {
 }
 
 const handleSelectedBoundsWheel = (event: WheelEvent) => {
+  if (handleSelectionMoveWheel(event)) {
+    return
+  }
+
   const overlay = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
 
   if (!overlay) {

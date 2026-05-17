@@ -70,12 +70,17 @@ export type SelectionMoveRuntimeSnapshot = {
 
 export type SelectionMoveDrag = {
   mode: SelectionMoveDragMode
+  startViewport: FlowViewport
   startClientX: number
   startClientY: number
   currentClientX: number
   currentClientY: number
   lastPaintedClientX: number
   lastPaintedClientY: number
+  startPointerGraph: { x: number, y: number }
+  currentPointerGraph: { x: number, y: number }
+  currentGraphDelta: { x: number, y: number }
+  lastPaintedGraphDelta: { x: number, y: number }
   hasPaintedPreview: boolean
   originalSyncNodes: SyncNode[]
   originalSyncNodesById: Map<string, SyncNode>

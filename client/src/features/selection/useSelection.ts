@@ -688,7 +688,10 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
       const shouldDeferSelection =
         !shouldMoveSelection &&
         !selectedIds.includes(nodeId) &&
-        selectedNodeElement.classList.contains('vue-flow__node-item')
+        (
+          selectedNodeElement.classList.contains('vue-flow__node-item') ||
+          selectedNodeElement.classList.contains('vue-flow__node-section')
+        )
       let pendingSelectionNodeId: string | undefined
 
       if (shouldDeferSelection) {
@@ -905,6 +908,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
     handleNodeDragStart,
     handleNodeDragStop,
     handleNodesChange,
+    handleSelectionMoveWheel: selectionMove.handleSelectionMoveWheel,
     handleSelectedBoundsPointerDown: selectionMove.handleSelectedBoundsPointerDown,
     isCanvasSelectionTarget,
     isNodeSelected,
