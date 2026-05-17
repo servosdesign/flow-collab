@@ -39,11 +39,20 @@ type RightContextGesture = {
   startClientY: number
 }
 
+type PendingNodePressSelection = {
+  nodeId: string
+  selectedElement: HTMLElement | null
+  suppressedElements: HTMLElement[]
+  suppressedOutlineElement: HTMLElement | null
+}
+
 const nodeInteractiveSelector =
   'input, textarea, button, label, select, [contenteditable], [data-node-interactive]'
 const nodeMoveBlockedSelector =
   `${nodeInteractiveSelector}, .vue-flow__handle, .vue-flow__resize-control, .node-resizer-layer`
 const rightContextDragThreshold = 4
+const pendingSelectedClass = 'selection-pending-selected'
+const pendingUnselectedClass = 'selection-pending-unselected'
 
 export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices) => {
   let lassoBoundsCache: LassoNodeBounds[] = []
@@ -52,6 +61,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
   let lassoPanelOrigin = { left: 0, top: 0 }
   let lassoPointerCaptureTarget: HTMLElement | null = null
   let lassoSelectionBox: HTMLDivElement | null = null
+  let pendingNodePressSelection: PendingNodePressSelection | null = null
   let hasPendingCursorClientPoint = false
   let pendingCursorClientX = 0
   let pendingCursorClientY = 0
@@ -101,8 +111,101 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
     selectOnlyNode,
     setSelectedNodes
   } = selectionState
+
+  const escapeCssAttributeValue = (value: string) => value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\a ')
+    .replace(/\r/g, '\\d ')
+
+  const getNodeElementById = (nodeId: string) => {
+    const selector = `.vue-flow__node[data-id="${escapeCssAttributeValue(nodeId)}"]`
+
+    return runtime.canvasPanel.value?.querySelector<HTMLElement>(selector) ?? null
+  }
+
+  const clearPendingNodePressSelection = () => {
+    const pending = pendingNodePressSelection
+
+    if (!pending) {
+      return
+    }
+
+    pending.selectedElement?.classList.remove(pendingSelectedClass)
+    pending.suppressedElements.forEach((element) => {
+      element.classList.remove(pendingUnselectedClass)
+    })
+    pending.suppressedOutlineElement?.classList.remove(pendingUnselectedClass)
+    pendingNodePressSelection = null
+  }
+
+  const beginPendingNodePressSelection = (
+    nodeId: string,
+    selectedIds: string[],
+    selectedElement: HTMLElement
+  ) => {
+    clearPendingNodePressSelection()
+
+    const suppressedElements = selectedIds
+      .filter((selectedId) => selectedId !== nodeId)
+      .map(getNodeElementById)
+      .filter((element): element is HTMLElement => Boolean(element))
+    const suppressedOutlineElement = selectedIds.length > 1
+      ? runtime.canvasPanel.value?.querySelector<HTMLElement>('.selected-nodes-outline') ?? null
+      : null
+
+    selectedElement.classList.add(pendingSelectedClass)
+    suppressedElements.forEach((element) => {
+      element.classList.add(pendingUnselectedClass)
+    })
+    suppressedOutlineElement?.classList.add(pendingUnselectedClass)
+
+    pendingNodePressSelection = {
+      nodeId,
+      selectedElement,
+      suppressedElements,
+      suppressedOutlineElement
+    }
+  }
+
+  const commitPendingNodePressSelection = (nodeId: string, reason: 'click' | 'drop') => {
+    const pending = pendingNodePressSelection
+
+    if (!pending || pending.nodeId !== nodeId) {
+      return
+    }
+
+    const applySelection = () => {
+      if (pendingNodePressSelection !== pending) {
+        return
+      }
+
+      setSelectedNodes([nodeId])
+      nextTick(() => {
+        if (pendingNodePressSelection === pending) {
+          clearPendingNodePressSelection()
+        }
+      })
+    }
+
+    if (reason === 'drop') {
+      window.requestAnimationFrame(applySelection)
+      return
+    }
+
+    applySelection()
+  }
+
+  const cancelPendingNodePressSelection = (nodeId: string) => {
+    if (pendingNodePressSelection?.nodeId === nodeId) {
+      clearPendingNodePressSelection()
+    }
+  }
+
   const selectionMove = useSelectionMove(runtime, services, {
-    getSelectedNodeIds
+    getSelectedNodeIds,
+    commitPendingNodeSelection: commitPendingNodePressSelection,
+    cancelPendingNodeSelection: cancelPendingNodePressSelection
   })
 
   const getCurrentSyncNodes = () => {
@@ -562,13 +665,27 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
         return
       }
 
-      if (!shouldMoveSelection) {
+      const shouldDeferSelection =
+        !shouldMoveSelection &&
+        !selectedIds.includes(nodeId) &&
+        selectedNodeElement.classList.contains('vue-flow__node-item')
+      let pendingSelectionNodeId: string | undefined
+
+      if (shouldDeferSelection) {
+        beginPendingNodePressSelection(nodeId, selectedIds, selectedNodeElement)
+        pendingSelectionNodeId = nodeId
+      } else if (!shouldMoveSelection) {
         setSelectedNodes([nodeId])
       }
 
       runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350
       closeContextMenu()
-      selectionMove.beginNodePointerMove(event, nodeId)
+      const started = selectionMove.beginNodePointerMove(event, nodeId, {
+        pendingSelectionNodeId
+      })
+      if (!started && pendingSelectionNodeId) {
+        cancelPendingNodePressSelection(pendingSelectionNodeId)
+      }
       return
     }
 
@@ -750,6 +867,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
     lassoPointerCaptureTarget = null
     clearLassoPreview()
     removeLassoSelectionBox()
+    clearPendingNodePressSelection()
   }
 
   return {

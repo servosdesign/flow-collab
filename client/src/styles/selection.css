@@ -53,6 +53,11 @@
   background: transparent;
 }
 
+.selected-nodes-outline.selection-pending-unselected {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .selection-move-preview-cover {
   position: absolute;
   inset: 0;

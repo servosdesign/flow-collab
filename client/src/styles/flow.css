@@ -33,7 +33,16 @@
   z-index: 14 !important;
 }
 
+.vue-flow .vue-flow__node.selection-pending-selected {
+  z-index: 14 !important;
+}
+
 .vue-flow .vue-flow__node-section.selection-selected-node {
+  z-index: 1 !important;
+}
+
+.vue-flow .vue-flow__node-section.selection-pending-selected,
+.vue-flow .vue-flow__node-section.selection-pending-unselected {
   z-index: 1 !important;
 }
 
@@ -51,6 +60,14 @@
 
 .vue-flow .vue-flow__node-item.selection-selected-node {
   z-index: 14 !important;
+}
+
+.vue-flow .vue-flow__node-item.selection-pending-selected {
+  z-index: 14 !important;
+}
+
+.vue-flow .vue-flow__node-item.selection-pending-unselected {
+  z-index: 5 !important;
 }
 
 .vue-flow .vue-flow__connectionline {

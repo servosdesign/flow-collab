@@ -42,6 +42,8 @@ const selectionMoveHiddenStyleId = 'vue-flow-sync-selection-move-hidden'
 
 type UseSelectionMoveOptions = {
   getSelectedNodeIds: () => string[]
+  commitPendingNodeSelection?: (nodeId: string, reason: 'click' | 'drop') => void
+  cancelPendingNodeSelection?: (nodeId: string) => void
 }
 
 type SelectionMovePreviewShape = {
@@ -52,6 +54,15 @@ type SelectionMovePreviewShape = {
 type RuntimePositionedFlowNode = FlowNode & {
   computedPosition?: { x: number, y: number, z?: number }
   dragging?: boolean
+}
+
+type VisibleDragElementSnapshot = {
+  id: string
+  element: HTMLElement
+  transform: string
+  willChange: string
+  zIndex: string
+  pointerEvents: string
 }
 
 type SelectionMoveStartOptions = {
@@ -74,6 +85,11 @@ type PendingNodePointerMove = {
   startClientX: number
   startClientY: number
   target: HTMLElement | null
+  pendingSelectionNodeId?: string
+}
+
+type BeginNodePointerMoveOptions = {
+  pendingSelectionNodeId?: string
 }
 
 export const useSelectionMove = (
@@ -87,6 +103,8 @@ export const useSelectionMove = (
   let selectionMoveHiddenEdgeIds = new Set<string>()
   let selectionMovePointerId: number | null = null
   let pendingNodePointerMove: PendingNodePointerMove | null = null
+  let activePendingSelectionNodeId: string | null = null
+  let visibleDragElementSnapshots = new Map<string, VisibleDragElementSnapshot>()
 
   const selectionMovePreview = computed(() => {
     const sectionDragPreview = runtime.sectionNodeDragPreview.value
@@ -287,6 +305,12 @@ export const useSelectionMove = (
     )
   }
 
+  const getNodeElementById = (nodeId: string) => {
+    const selector = `.vue-flow__node[data-id="${escapeCssAttributeValue(nodeId)}"]`
+
+    return runtime.canvasPanel.value?.querySelector<HTMLElement>(selector) ?? null
+  }
+
   const getSelectionMoveDelta = (selectionMoveDrag: SelectionMoveDrag) => {
     const viewport = runtime.currentViewport.value
 
@@ -452,6 +476,88 @@ export const useSelectionMove = (
     }
 
     hideSelectionMoveIds(selectionMoveDrag.hiddenIds)
+  }
+
+  const clearVisibleDragElementSnapshots = (restoreTransforms = true) => {
+    if (visibleDragElementSnapshots.size === 0) {
+      return
+    }
+
+    visibleDragElementSnapshots.forEach((snapshot) => {
+      if (!snapshot.element.isConnected) {
+        return
+      }
+
+      if (restoreTransforms) {
+        snapshot.element.style.transform = snapshot.transform
+      }
+
+      snapshot.element.style.willChange = snapshot.willChange
+      snapshot.element.style.zIndex = snapshot.zIndex
+      snapshot.element.style.pointerEvents = snapshot.pointerEvents
+    })
+
+    visibleDragElementSnapshots = new Map()
+  }
+
+  const beginVisibleDragPreview = (selectionMoveDrag: SelectionMoveDrag) => {
+    clearVisibleDragElementSnapshots()
+
+    if (selectionMoveDrag.mode !== 'visible') {
+      return
+    }
+
+    const nextSnapshots = new Map<string, VisibleDragElementSnapshot>()
+
+    selectionMoveDrag.hiddenIds.forEach((nodeId) => {
+      const element = getNodeElementById(nodeId)
+
+      if (!element) {
+        return
+      }
+
+      nextSnapshots.set(nodeId, {
+        id: nodeId,
+        element,
+        transform: element.style.transform,
+        willChange: element.style.willChange,
+        zIndex: element.style.zIndex,
+        pointerEvents: element.style.pointerEvents
+      })
+
+      element.style.willChange = 'transform'
+      element.style.pointerEvents = 'none'
+
+      const node = runtime.findNode(nodeId) as RuntimePositionedFlowNode | undefined
+      if (node?.type !== 'section') {
+        element.style.zIndex = '20'
+      }
+    })
+
+    visibleDragElementSnapshots = nextSnapshots
+
+    if (visibleDragElementSnapshots.size !== selectionMoveDrag.hiddenIds.size) {
+      clearVisibleDragElementSnapshots()
+    }
+  }
+
+  const paintVisibleDragPreview = (selectionMoveDrag: SelectionMoveDrag) => {
+    if (selectionMoveDrag.mode !== 'visible' || visibleDragElementSnapshots.size === 0) {
+      return
+    }
+
+    const delta = getSelectionMoveDelta(selectionMoveDrag)
+    const previewTransform = `translate3d(${delta.x}px, ${delta.y}px, 0)`
+
+    visibleDragElementSnapshots.forEach((snapshot) => {
+      if (!snapshot.element.isConnected) {
+        return
+      }
+
+      snapshot.element.style.transform = snapshot.transform
+        ? `${snapshot.transform} ${previewTransform}`
+        : previewTransform
+    })
   }
 
   const handleSectionNodeDragStart = (sectionId: string) => {
@@ -867,8 +973,13 @@ export const useSelectionMove = (
 
     selectionMoveDrag.frame = undefined
     paintSelectionMovePreview(selectionMoveDrag)
+    paintVisibleDragPreview(selectionMoveDrag)
 
     if (selectionMoveDrag.mode === 'bundle') {
+      return
+    }
+
+    if (visibleDragElementSnapshots.size > 0) {
       return
     }
 
@@ -885,13 +996,14 @@ export const useSelectionMove = (
     }
   }
 
-  const clearSelectionMovePreview = () => {
+  const clearSelectionMovePreview = (restoreVisibleDragTransforms = true) => {
     if (selectionMovePreviewElement) {
       selectionMovePreviewElement.style.transform = ''
       selectionMovePreviewElement.style.willChange = ''
     }
 
     selectionMovePreviewElement = null
+    clearVisibleDragElementSnapshots(restoreVisibleDragTransforms)
     clearSelectionMoveHiddenIds()
   }
 
@@ -1150,6 +1262,7 @@ export const useSelectionMove = (
       selectedFlowBounds: options.selectedFlowBounds
     }
     hideBundleSelectionNodes(runtime.interaction.selectionMoveDrag)
+    beginVisibleDragPreview(runtime.interaction.selectionMoveDrag)
     runtime.isMovingSelection.value = true
 
     return true
@@ -1213,8 +1326,8 @@ export const useSelectionMove = (
     scheduleSelectionMoveFrame()
   }
 
-  const clearSelectionMovePresentation = () => {
-    clearSelectionMovePreview()
+  const clearSelectionMovePresentation = (restoreVisibleDragTransforms = true) => {
+    clearSelectionMovePreview(restoreVisibleDragTransforms)
     clearSectionNodeDragPreview()
   }
 
@@ -1247,13 +1360,21 @@ export const useSelectionMove = (
     event.stopImmediatePropagation()
     runtime.interaction.ignoreVueFlowSelectionUntil = Date.now() + 350
     const committed = commitMovedSelectedNodes(drag)
+    const pendingSelectionNodeId = activePendingSelectionNodeId
+    activePendingSelectionNodeId = null
     runtime.interaction.selectionMoveDrag = null
     runtime.isMovingSelection.value = false
     services.scheduleSelectionBoundsRefresh()
     if (committed) {
-      nextTick(clearSelectionMovePresentation)
+      nextTick(() => clearSelectionMovePresentation(false))
+      if (pendingSelectionNodeId) {
+        options.commitPendingNodeSelection?.(pendingSelectionNodeId, 'drop')
+      }
     } else {
       clearSelectionMovePresentation()
+      if (pendingSelectionNodeId) {
+        options.cancelPendingNodeSelection?.(pendingSelectionNodeId)
+      }
     }
   }
 
@@ -1288,16 +1409,28 @@ export const useSelectionMove = (
   }
 
   const startPendingNodePointerMove = (event: PointerEvent, pending: PendingNodePointerMove) => {
-    const normalizedOriginalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode)
     const selectedIds = options.getSelectedNodeIds()
     const selectedIdSet = new Set(selectedIds)
-    const node = normalizedOriginalNodes.find((candidate) => candidate.id === pending.nodeId)
+    const moveSelection = selectedIds.length > 1 && selectedIdSet.has(pending.nodeId)
+    const runtimeNode = runtime.findNode(pending.nodeId) as FlowNode | undefined
+
+    if (!runtimeNode) {
+      return false
+    }
+
+    const pendingNode = normalizeNode(runtimeNode)
+    const useSingleItemFastPath = !moveSelection && pendingNode.type !== 'section'
+    const normalizedOriginalNodes = useSingleItemFastPath
+      ? [pendingNode]
+      : (runtime.nodes.value as FlowNode[]).map(normalizeNode)
+    const node = useSingleItemFastPath
+      ? pendingNode
+      : normalizedOriginalNodes.find((candidate) => candidate.id === pending.nodeId)
 
     if (!node) {
       return false
     }
 
-    const moveSelection = selectedIds.length > 1 && selectedIdSet.has(pending.nodeId)
     const movingIds = moveSelection
       ? getMovableSelectedIds(normalizedOriginalNodes)
       : new Set([pending.nodeId])
@@ -1325,6 +1458,8 @@ export const useSelectionMove = (
     if (!started) {
       return false
     }
+
+    activePendingSelectionNodeId = pending.pendingSelectionNodeId ?? null
 
     if (useSingleSectionPreview) {
       attachSelectionMovePreviewElementOnNextTick()
@@ -1372,6 +1507,9 @@ export const useSelectionMove = (
       }
 
       if (!startPendingNodePointerMove(event, pending)) {
+        if (pending.pendingSelectionNodeId) {
+          options.cancelPendingNodeSelection?.(pending.pendingSelectionNodeId)
+        }
         clearPendingNodePointerMove(event)
         return
       }
@@ -1395,6 +1533,7 @@ export const useSelectionMove = (
     window.removeEventListener('pointermove', handleNodePointerMove, true)
     window.removeEventListener('pointerup', handleNodePointerUp, true)
     window.removeEventListener('pointercancel', handleNodePointerCancel, true)
+    const pendingSelectionNodeId = pending?.pendingSelectionNodeId
     pendingNodePointerMove = null
     runtime.isResizingNode.value = false
 
@@ -1404,6 +1543,9 @@ export const useSelectionMove = (
       }
       selectionMovePointerCaptureTarget = null
       selectionMovePointerId = null
+      if (pendingSelectionNodeId) {
+        options.commitPendingNodeSelection?.(pendingSelectionNodeId, 'click')
+      }
       return
     }
 
@@ -1420,6 +1562,8 @@ export const useSelectionMove = (
       return
     }
 
+    const pendingSelectionNodeId = pending?.pendingSelectionNodeId ?? activePendingSelectionNodeId
+    activePendingSelectionNodeId = null
     clearPendingNodePointerMove(event)
     if (runtime.interaction.selectionMoveDrag?.frame) {
       window.cancelAnimationFrame(runtime.interaction.selectionMoveDrag.frame)
@@ -1433,9 +1577,16 @@ export const useSelectionMove = (
     runtime.isResizingNode.value = false
     clearSelectionMovePresentation()
     services.scheduleSelectionBoundsRefresh()
+    if (pendingSelectionNodeId) {
+      options.cancelPendingNodeSelection?.(pendingSelectionNodeId)
+    }
   }
 
-  const beginNodePointerMove = (event: PointerEvent, nodeId: string) => {
+  const beginNodePointerMove = (
+    event: PointerEvent,
+    nodeId: string,
+    optionsOverride: BeginNodePointerMoveOptions = {}
+  ) => {
     if (
       !runtime.isLoggedIn.value ||
       event.button !== 0 ||
@@ -1454,7 +1605,8 @@ export const useSelectionMove = (
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
-      target
+      target,
+      pendingSelectionNodeId: optionsOverride.pendingSelectionNodeId
     }
     selectionMovePointerCaptureTarget = target
     selectionMovePointerId = event.pointerId
@@ -1553,6 +1705,8 @@ export const useSelectionMove = (
     if (runtime.interaction.selectionMoveDrag) {
       restoreSelectionMoveRuntimeSnapshots(runtime.interaction.selectionMoveDrag)
     }
+    const pendingSelectionNodeId =
+      pendingNodePointerMove?.pendingSelectionNodeId ?? activePendingSelectionNodeId
     clearSelectionMovePresentation()
     runtime.interaction.selectionMoveDrag = null
     if (runtime.interaction.scheduleSelectionMoveFrame === scheduleSelectionMoveFrame) {
@@ -1561,6 +1715,10 @@ export const useSelectionMove = (
     selectionMovePointerCaptureTarget = null
     selectionMovePointerId = null
     pendingNodePointerMove = null
+    activePendingSelectionNodeId = null
+    if (pendingSelectionNodeId) {
+      options.cancelPendingNodeSelection?.(pendingSelectionNodeId)
+    }
   }
 
   runtime.interaction.scheduleSelectionMoveFrame = scheduleSelectionMoveFrame

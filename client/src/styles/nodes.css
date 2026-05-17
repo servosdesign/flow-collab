@@ -21,11 +21,26 @@
     0 10px 26px rgb(22 33 43 / 14%);
 }
 
-.sync-node.selected {
+.sync-node.selected,
+.vue-flow__node.selection-pending-selected .sync-node {
   border-color: #1a73e8;
   box-shadow:
     0 0 0 2px rgb(26 115 232 / 34%),
     0 8px 22px rgb(22 33 43 / 12%);
+}
+
+.vue-flow__node.selection-pending-unselected .sync-node.selected {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 80%),
+    0 10px 26px rgb(22 33 43 / 14%);
+}
+
+.vue-flow__node.selection-pending-unselected .item-node.selected {
+  border-color: #b8c4d2;
+}
+
+.vue-flow__node.selection-pending-unselected .section-node.selected {
+  border-color: #0f766e;
 }
 
 .vue-flow__node.selection-drag-hidden {

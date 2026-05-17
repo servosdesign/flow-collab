@@ -17,19 +17,19 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
   }
 
   const clearEdgeSelection = () => {
-    let changed = false
+    if (!runtime.edges.value.some((edge) => (edge as FlowEdge & { selected?: boolean }).selected)) {
+      return
+    }
+
     const nextEdges = runtime.edges.value.map((edge) => {
       if ((edge as FlowEdge & { selected?: boolean }).selected) {
-        changed = true
         return { ...edge, selected: false } as unknown as FlowEdge
       }
 
       return edge
     })
 
-    if (changed) {
-      runtime.edges.value = nextEdges
-    }
+    runtime.edges.value = nextEdges
   }
 
   const refreshSelectedNodeClasses = () => {

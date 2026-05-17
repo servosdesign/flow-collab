@@ -67,9 +67,19 @@ export const useGraphState = (runtime: FlowRuntime) => {
         classNames.push('selection-selected-node')
       }
 
+      const className = classNames.join(' ')
+
+      if (
+        node.class === className &&
+        node.selected === false &&
+        node.selectable === false
+      ) {
+        return node
+      }
+
       return {
         ...node,
-        class: classNames.join(' '),
+        class: className,
         selected: false,
         selectable: false
       } as FlowNode
