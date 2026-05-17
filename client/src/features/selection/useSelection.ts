@@ -56,6 +56,7 @@ const pendingUnselectedClass = 'selection-pending-unselected'
 
 export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices) => {
   let lassoBoundsCache: LassoNodeBounds[] = []
+  let lassoBoundsCacheReady = false
   let pendingLassoRect: LassoPointerRect | null = null
   let rightContextGesture: RightContextGesture | null = null
   let lassoPanelOrigin = { left: 0, top: 0 }
@@ -496,6 +497,13 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
         height: bounds.height
       }
     })
+    lassoBoundsCacheReady = true
+  }
+
+  const ensureLassoBoundsCache = () => {
+    if (!lassoBoundsCacheReady) {
+      rebuildLassoBoundsCache()
+    }
   }
 
   const hasGraphBoundsOverlap = (
@@ -526,6 +534,8 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
   }
 
   const getLassoSelectedIds = (rect: LassoPointerRect) => {
+    ensureLassoBoundsCache()
+
     const selectionBounds = getFlowSelectionBounds(rect)
     const selectedIds: string[] = []
 
@@ -580,6 +590,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
 
     pendingLassoRect = null
     lassoBoundsCache = []
+    lassoBoundsCacheReady = false
     runtime.isLassoSelecting.value = false
     runtime.lassoPreviewNodeIds.value = new Set()
     resetLassoSelectionBox()
@@ -733,7 +744,8 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
         lassoPointerCaptureTarget = null
       }
     }
-    rebuildLassoBoundsCache()
+    lassoBoundsCache = []
+    lassoBoundsCacheReady = false
     runtime.isLassoSelecting.value = true
     runtime.lassoPreviewNodeIds.value = new Set()
     runtime.rightSelection.value = {

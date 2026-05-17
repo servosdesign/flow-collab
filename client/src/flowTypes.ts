@@ -74,6 +74,9 @@ export type SelectionMoveDrag = {
   startClientY: number
   currentClientX: number
   currentClientY: number
+  lastPaintedClientX: number
+  lastPaintedClientY: number
+  hasPaintedPreview: boolean
   originalSyncNodes: SyncNode[]
   originalSyncNodesById: Map<string, SyncNode>
   originalPositionsById: Map<string, { x: number, y: number }>

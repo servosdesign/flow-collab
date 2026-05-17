@@ -9,6 +9,7 @@ import {
 } from '@vue-flow/core'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useFlowGraphContext } from '../../app/flowEditorContext'
+import type { SelectionMoveDrag } from '../../flowTypes'
 import {
   edgeClassSignature,
   edgeHasClass,
@@ -34,12 +35,15 @@ const {
 
 let drawFrame: number | undefined
 let geometryDirty = true
+let edgeListVersion = 0
 let cachedEdgeRenders: CachedEdgeRender[] = []
+let activeDragEdgePreviewCache: ActiveDragEdgePreviewCache | null = null
 
 const hiddenEdgeClass = 'selection-drag-hidden-edge'
 const maxDevicePixelRatio = 2
 const viewportCullPadding = 160
 const maxPreviewAffectedEdges = 120
+const emptyNodeOffsets: EdgeNodeOffsets = new Map()
 
 type EdgePaintStyle = {
   stroke: string
@@ -71,6 +75,17 @@ type ActiveDragEdgePreview = {
   affectedEdgeIds: Set<string>
   previewEdges: GraphEdge[]
   nodeOffsets: EdgeNodeOffsets
+  previewRenderCache: Map<string, CachedPreviewEdgeRender>
+}
+
+type ActiveDragEdgePreviewCache = ActiveDragEdgePreview & {
+  drag: SelectionMoveDrag
+  edgeListVersion: number
+  nodeOffsetsKey: string
+}
+
+type CachedPreviewEdgeRender = CachedEdgeRender & {
+  offsetKey: string
 }
 
 type CanvasLayoutState = {
@@ -252,9 +267,26 @@ const getSelectionMoveDelta = () => {
   }
 }
 
+const getOffsetKey = (offset: { x: number, y: number } | undefined) => {
+  return offset
+    ? `${roundLayoutValue(offset.x)},${roundLayoutValue(offset.y)}`
+    : ''
+}
+
+const getPreviewOffsetKey = (edge: GraphEdge, nodeOffsets: EdgeNodeOffsets) => {
+  return `${getOffsetKey(nodeOffsets.get(edge.source))}|${getOffsetKey(nodeOffsets.get(edge.target))}`
+}
+
 const markGeometryDirty = () => {
   geometryDirty = true
+  activeDragEdgePreviewCache?.previewRenderCache.clear()
   scheduleDraw()
+}
+
+const markEdgesDirty = () => {
+  edgeListVersion += 1
+  activeDragEdgePreviewCache = null
+  markGeometryDirty()
 }
 
 const scheduleDraw = () => {
@@ -448,51 +480,110 @@ const drawEdgeRender = (
   context.restore()
 }
 
+const syncPreviewNodeOffsets = (
+  cache: ActiveDragEdgePreviewCache,
+  delta: { x: number, y: number } | null
+) => {
+  if (!delta || cache.previewEdges.length === 0) {
+    cache.nodeOffsets = emptyNodeOffsets
+    cache.nodeOffsetsKey = ''
+    return
+  }
+
+  const nodeOffsetsKey = `${roundLayoutValue(delta.x)},${roundLayoutValue(delta.y)}`
+
+  if (cache.nodeOffsetsKey === nodeOffsetsKey) {
+    return
+  }
+
+  const nodeOffsets: EdgeNodeOffsets = new Map()
+  cache.drag.hiddenIds.forEach((nodeId) => {
+    nodeOffsets.set(nodeId, delta)
+  })
+
+  cache.nodeOffsets = nodeOffsets
+  cache.nodeOffsetsKey = nodeOffsetsKey
+}
+
 const getActiveDragEdgePreview = (edges: GraphEdge[]) : ActiveDragEdgePreview | null => {
   const drag = getSelectionMoveDrag()
 
   if (!drag) {
+    activeDragEdgePreviewCache = null
     return null
   }
 
-  const affectedEdges = edges.filter((edge) =>
-    drag.hiddenIds.has(edge.source) || drag.hiddenIds.has(edge.target)
-  )
+  if (
+    activeDragEdgePreviewCache?.drag !== drag ||
+    activeDragEdgePreviewCache.edgeListVersion !== edgeListVersion
+  ) {
+    const affectedEdges = edges.filter((edge) =>
+      drag.hiddenIds.has(edge.source) || drag.hiddenIds.has(edge.target)
+    )
 
-  if (affectedEdges.length === 0) {
+    activeDragEdgePreviewCache = {
+      drag,
+      edgeListVersion,
+      affectedEdgeIds: new Set(affectedEdges.map((edge) => edge.id)),
+      previewEdges: drag.mode === 'visible' && affectedEdges.length <= maxPreviewAffectedEdges
+        ? affectedEdges
+        : [],
+      nodeOffsets: emptyNodeOffsets,
+      nodeOffsetsKey: '',
+      previewRenderCache: new Map()
+    }
+  }
+
+  if (activeDragEdgePreviewCache.affectedEdgeIds.size === 0) {
     return null
   }
 
-  const affectedEdgeIds = new Set(affectedEdges.map((edge) => edge.id))
+  syncPreviewNodeOffsets(activeDragEdgePreviewCache, getSelectionMoveDelta())
 
-  if (drag.mode !== 'visible' || affectedEdges.length > maxPreviewAffectedEdges) {
-    return {
-      affectedEdgeIds,
-      previewEdges: [],
-      nodeOffsets: new Map()
-    }
+  return activeDragEdgePreviewCache
+}
+
+const resolveCachedPreviewEdgeRender = (
+  edge: GraphEdge,
+  activeDragEdgePreview: ActiveDragEdgePreview
+) => {
+  const geometryKey = getEdgeGeometryKey(edge)
+  const styleKey = getEdgeStyleKey(edge)
+  const offsetKey = getPreviewOffsetKey(edge, activeDragEdgePreview.nodeOffsets)
+  const cached = activeDragEdgePreview.previewRenderCache.get(edge.id)
+  const geometryChanged = cached?.geometryKey !== geometryKey || cached?.offsetKey !== offsetKey
+  const styleChanged = cached?.styleKey !== styleKey
+  const geometry = geometryChanged
+    ? resolveGraphEdgeGeometryWithNodeOffsets(edge, activeDragEdgePreview.nodeOffsets)
+    : cached.geometry
+
+  if (!geometry) {
+    activeDragEdgePreview.previewRenderCache.delete(edge.id)
+    return null
   }
 
-  const delta = getSelectionMoveDelta()
-
-  if (!delta) {
-    return {
-      affectedEdgeIds,
-      previewEdges: [],
-      nodeOffsets: new Map()
-    }
+  const style = styleChanged || !cached
+    ? getEdgePaintStyle(edge)
+    : cached.style
+  const render: CachedPreviewEdgeRender = {
+    id: edge.id,
+    geometryKey,
+    styleKey,
+    offsetKey,
+    geometry,
+    bounds: geometryChanged || styleChanged || !cached
+      ? getGeometryBounds(geometry, style)
+      : cached.bounds,
+    path: geometryChanged || !cached
+      ? new Path2D(geometry.path)
+      : cached.path,
+    style,
+    markerType: getMarkerType(edge.markerEnd)
   }
 
-  const nodeOffsets: EdgeNodeOffsets = new Map()
-  drag.hiddenIds.forEach((nodeId) => {
-    nodeOffsets.set(nodeId, delta)
-  })
+  activeDragEdgePreview.previewRenderCache.set(edge.id, render)
 
-  return {
-    affectedEdgeIds,
-    previewEdges: affectedEdges,
-    nodeOffsets
-  }
+  return render
 }
 
 const resolveCachedEdgeRender = (edge: GraphEdge) => {
@@ -613,34 +704,30 @@ const drawCanvas = () => {
     drawEdgeRender(context, geometry, path, style, edgeRender.markerType)
   }
 
-  for (const edge of activeDragEdgePreview?.previewEdges ?? []) {
-    const style = getEdgePaintStyle(edge)
-    const geometry = resolveGraphEdgeGeometryWithNodeOffsets(
-      edge,
-      activeDragEdgePreview?.nodeOffsets ?? new Map()
-    )
+  if (activeDragEdgePreview) {
+    for (const edge of activeDragEdgePreview.previewEdges) {
+      const edgeRender = resolveCachedPreviewEdgeRender(edge, activeDragEdgePreview)
 
-    if (!geometry) {
-      continue
+      if (!edgeRender) {
+        continue
+      }
+
+      if (!isBoundsVisible(edgeRender.bounds, left, top, width, height)) {
+        continue
+      }
+
+      if (edgeRender.style.dashed) {
+        hasAnimatedEdges = true
+      }
+
+      drawEdgeRender(
+        context,
+        edgeRender.geometry,
+        edgeRender.path,
+        edgeRender.style,
+        edgeRender.markerType
+      )
     }
-
-    const bounds = getGeometryBounds(geometry, style)
-
-    if (!isBoundsVisible(bounds, left, top, width, height)) {
-      continue
-    }
-
-    if (style.dashed) {
-      hasAnimatedEdges = true
-    }
-
-    drawEdgeRender(
-      context,
-      geometry,
-      new Path2D(geometry.path),
-      style,
-      getMarkerType(edge.markerEnd)
-    )
   }
 
   if (hasAnimatedEdges) {
@@ -660,7 +747,7 @@ watch(
   { flush: 'post', immediate: true }
 )
 
-watch(getEdges, markGeometryDirty, { deep: true, flush: 'post' })
+watch(getEdges, markEdgesDirty, { deep: true, flush: 'post' })
 watch(getNodes, markGeometryDirty, { deep: true, flush: 'post' })
 watch(selectionMoveHiddenEdgeIds, markGeometryDirty, { flush: 'post' })
 watch(selectionMovePreviewVersion, scheduleDraw, { flush: 'post' })

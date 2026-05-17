@@ -324,6 +324,16 @@ export const useSelectionMove = (
     }
   }
 
+  const hasTransformOnlyVisiblePreview = (selectionMoveDrag: SelectionMoveDrag) => {
+    return selectionMoveDrag.mode === 'visible' && visibleDragElementSnapshots.size > 0
+  }
+
+  const markSelectionMovePreviewPainted = (selectionMoveDrag: SelectionMoveDrag) => {
+    selectionMoveDrag.lastPaintedClientX = selectionMoveDrag.currentClientX
+    selectionMoveDrag.lastPaintedClientY = selectionMoveDrag.currentClientY
+    selectionMoveDrag.hasPaintedPreview = true
+  }
+
   const hasClassName = (className: FlowNode['class'] | FlowEdge['class'], name: string) => {
     if (typeof className === 'string') {
       return className.split(/\s+/).includes(name)
@@ -562,6 +572,7 @@ export const useSelectionMove = (
         ? `${snapshot.transform} ${previewTransform}`
         : previewTransform
     })
+    markSelectionMovePreviewPainted(selectionMoveDrag)
   }
 
   const handleSectionNodeDragStart = (sectionId: string) => {
@@ -1199,6 +1210,28 @@ export const useSelectionMove = (
     applySelectionMoveFrame()
   }
 
+  const cancelSelectionMoveFrame = (selectionMoveDrag: SelectionMoveDrag) => {
+    if (!selectionMoveDrag.frame) {
+      return
+    }
+
+    window.cancelAnimationFrame(selectionMoveDrag.frame)
+    selectionMoveDrag.frame = undefined
+  }
+
+  const settleVisibleDragAtLastPaintedPosition = (selectionMoveDrag: SelectionMoveDrag) => {
+    if (!hasTransformOnlyVisiblePreview(selectionMoveDrag) || !selectionMoveDrag.hasPaintedPreview) {
+      return false
+    }
+
+    cancelSelectionMoveFrame(selectionMoveDrag)
+    selectionMoveDrag.currentClientX = selectionMoveDrag.lastPaintedClientX
+    selectionMoveDrag.currentClientY = selectionMoveDrag.lastPaintedClientY
+    bumpSelectionMovePreviewVersion()
+
+    return true
+  }
+
   const beginSelectionMove = (options: SelectionMoveStartOptions) => {
     const normalizedOriginalNodes =
       options.normalizedOriginalNodes ?? (runtime.nodes.value as FlowNode[]).map(normalizeNode)
@@ -1253,6 +1286,9 @@ export const useSelectionMove = (
       startClientY: options.startClientY,
       currentClientX: options.currentClientX,
       currentClientY: options.currentClientY,
+      lastPaintedClientX: options.currentClientX,
+      lastPaintedClientY: options.currentClientY,
+      hasPaintedPreview: false,
       originalSyncNodes: normalizedOriginalNodes,
       originalSyncNodesById,
       originalPositionsById,
@@ -1347,7 +1383,9 @@ export const useSelectionMove = (
       drag.currentClientX = event.clientX
       drag.currentClientY = event.clientY
     }
-    flushSelectionMoveFrame()
+    if (!drag || !settleVisibleDragAtLastPaintedPosition(drag)) {
+      flushSelectionMoveFrame()
+    }
     if (selectionMovePointerCaptureTarget?.hasPointerCapture(event.pointerId)) {
       selectionMovePointerCaptureTarget.releasePointerCapture(event.pointerId)
     }
