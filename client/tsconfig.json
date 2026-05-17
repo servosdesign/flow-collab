@@ -10,6 +10,7 @@
     "isolatedModules": true,
     "esModuleInterop": true,
     "noEmit": true,
+    "tsBuildInfoFile": "./node_modules/.cache/vue-tsc/tsconfig.tsbuildinfo",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "types": ["vite/client"]
