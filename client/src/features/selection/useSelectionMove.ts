@@ -9,10 +9,16 @@ import {
 import type { FlowRuntime } from '../../flowRuntime'
 import type {
   SelectionMoveDrag,
+  SelectionOverlayGeometrySnapshot,
   SelectionMovePresentationStrategy,
   SelectionMovePreviewCounts
 } from '../../flowTypes'
 import { getSelectionOutlineElement } from './selectionDom'
+import {
+  createSelectionOverlayGeometrySnapshot,
+  getSelectionIdsKey,
+  translateSelectionOverlayGeometry
+} from './selectionOverlayGeometry'
 import { createSelectionMoveCommit } from './selectionMove/commit'
 import {
   largeSelectionMovePreviewMode,
@@ -58,6 +64,7 @@ export const useSelectionMove = (
   let pendingNodePointerMove: PendingNodePointerMove | null = null
   let pendingSelectionMoveCommit: PendingSelectionMoveCommit | null = null
   let activePendingSelectionNodeId: string | null = null
+  let activeSelectionOverlayGeometrySnapshot: SelectionOverlayGeometrySnapshot | null = null
 
   const bumpSelectionMovePreviewVersion = () => {
     runtime.selectionMovePreviewVersion.value += 1
@@ -184,6 +191,44 @@ export const useSelectionMove = (
 
   const getSelectionMoveDelta = (selectionMoveDrag: SelectionMoveDrag) => {
     return selectionMoveDrag.currentGraphDelta
+  }
+
+  const captureSelectionOverlayGeometrySnapshot = () => {
+    activeSelectionOverlayGeometrySnapshot =
+      options.getCurrentSelectionOverlayGeometrySnapshot?.() ?? null
+  }
+
+  const clearSelectionOverlayGeometrySnapshots = () => {
+    activeSelectionOverlayGeometrySnapshot = null
+    runtime.selectionOverlayGeometrySnapshot.value = null
+  }
+
+  const seedCommittedSelectionOverlayGeometrySnapshot = (drag: SelectionMoveDrag) => {
+    const snapshot = activeSelectionOverlayGeometrySnapshot
+    activeSelectionOverlayGeometrySnapshot = null
+
+    if (!snapshot) {
+      runtime.selectionOverlayGeometrySnapshot.value = null
+      return
+    }
+
+    const selectedIds = options.getSelectedNodeIds()
+
+    if (snapshot.selectedIdsKey !== getSelectionIdsKey(selectedIds)) {
+      runtime.selectionOverlayGeometrySnapshot.value = null
+      return
+    }
+
+    const delta = getSelectionMoveDelta(drag)
+
+    runtime.selectionOverlayGeometrySnapshot.value = createSelectionOverlayGeometrySnapshot(
+      selectedIds,
+      runtime.selectionBoundsVersion.value,
+      translateSelectionOverlayGeometry(snapshot, {
+        x: Math.round(delta.x),
+        y: Math.round(delta.y)
+      })
+    )
   }
 
   const selectionMovePresentation = createSelectionMovePresentation(
@@ -539,6 +584,7 @@ export const useSelectionMove = (
       : null
 
     if (sectionMetadata) {
+      captureSelectionOverlayGeometrySnapshot()
       const started = beginSelectionMove({
         startClientX: event.clientX,
         startClientY: event.clientY,
@@ -559,6 +605,7 @@ export const useSelectionMove = (
       })
 
       if (!started) {
+        activeSelectionOverlayGeometrySnapshot = null
         return
       }
 
@@ -570,6 +617,7 @@ export const useSelectionMove = (
     const normalizedOriginalNodes = (runtime.nodes.value as FlowNode[]).map(normalizeNode)
     const movingIds = getMovableSelectedIds(normalizedOriginalNodes, options.getSelectedNodeIds())
 
+    captureSelectionOverlayGeometrySnapshot()
     const started = beginSelectionMove({
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -584,6 +632,7 @@ export const useSelectionMove = (
     })
 
     if (!started) {
+      activeSelectionOverlayGeometrySnapshot = null
       return
     }
 
@@ -664,6 +713,12 @@ export const useSelectionMove = (
     const { drag, pendingSelectionNodeId } = pending
     const committed = selectionMoveCommit.commitMovedSelectedNodes(drag)
 
+    if (committed) {
+      seedCommittedSelectionOverlayGeometrySnapshot(drag)
+    } else {
+      clearSelectionOverlayGeometrySnapshots()
+    }
+
     activePendingSelectionNodeId = null
     runtime.interaction.selectionMoveDrag = null
     runtime.isMovingSelection.value = false
@@ -731,6 +786,7 @@ export const useSelectionMove = (
     removeSelectionMoveWheelListener()
 
     if (!drag) {
+      clearSelectionOverlayGeometrySnapshots()
       runtime.interaction.selectionMoveDrag = null
       runtime.isMovingSelection.value = false
       clearSelectionMovePresentation()
@@ -909,6 +965,10 @@ export const useSelectionMove = (
       return false
     }
 
+    if (!moveSelection) {
+      activeSelectionOverlayGeometrySnapshot = null
+    }
+
     if (!moveSelection && isSectionFlowNode(runtimeNode)) {
       const started = beginSingleSectionMove(event, pending, runtimeNode as RuntimePositionedFlowNode)
 
@@ -947,6 +1007,13 @@ export const useSelectionMove = (
       : useSingleSectionPreview
         ? getSelectionFlowBoundsSnapshot([pending.nodeId], normalizedOriginalNodes)
         : null
+
+    if (moveSelection) {
+      captureSelectionOverlayGeometrySnapshot()
+    } else {
+      activeSelectionOverlayGeometrySnapshot = null
+    }
+
     const started = beginSelectionMove({
       startClientX: pending.startClientX,
       startClientY: pending.startClientY,
@@ -963,6 +1030,7 @@ export const useSelectionMove = (
     })
 
     if (!started) {
+      activeSelectionOverlayGeometrySnapshot = null
       return false
     }
 
@@ -1085,6 +1153,7 @@ export const useSelectionMove = (
         runtime.interaction.selectionMoveDrag
       )
     }
+    clearSelectionOverlayGeometrySnapshots()
     runtime.interaction.selectionMoveDrag = null
     runtime.isMovingSelection.value = false
     runtime.isResizingNode.value = false
@@ -1172,6 +1241,7 @@ export const useSelectionMove = (
     }
     const pendingSelectionNodeId =
       pendingNodePointerMove?.pendingSelectionNodeId ?? activePendingSelectionNodeId
+    clearSelectionOverlayGeometrySnapshots()
     clearSelectionMovePresentation()
     runtime.interaction.selectionMoveDrag = null
     bumpSelectionMovePreviewVersion()

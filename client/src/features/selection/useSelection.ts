@@ -41,6 +41,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
 
   const selectionOverlay = useSelectionOverlayModel(runtime, services)
   const {
+    getCurrentSelectionOverlayGeometrySnapshot,
     getSelectedClientBounds,
     isPointInsideSelectedBounds,
     isSingleNodeSelection,
@@ -100,6 +101,7 @@ export const useSelection = (runtime: FlowRuntime, services: FlowEditorServices)
 
   const selectionMove = useSelectionMove(runtime, services, {
     getSelectedNodeIds,
+    getCurrentSelectionOverlayGeometrySnapshot,
     commitPendingNodeSelection: commitPendingNodePressSelection,
     cancelPendingNodeSelection: cancelPendingNodePressSelection
   })

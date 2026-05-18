@@ -40,6 +40,7 @@ export const useViewport = (runtime: FlowRuntime) => {
 
     runtime.timers.selectionBoundsFrame = window.requestAnimationFrame(() => {
       runtime.timers.selectionBoundsFrame = undefined
+      runtime.selectionOverlayGeometrySnapshot.value = null
       runtime.selectionBoundsVersion.value += 1
     })
   }

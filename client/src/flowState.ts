@@ -2,7 +2,13 @@ import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import type { FlowNodeKind, FlowViewport, SyncFlowDocument, SyncPresenceDocument, SyncPresenceUser } from '@vue-flow-sync/shared'
 import type { ShareDocument } from 'sharedb/lib/client'
 import type { FlowEdge, FlowNode } from './graph'
-import type { CanvasClientBounds, ContextTarget, DragSelection, FlowAppState } from './flowTypes'
+import type {
+  CanvasClientBounds,
+  ContextTarget,
+  DragSelection,
+  FlowAppState,
+  SelectionOverlayGeometrySnapshot
+} from './flowTypes'
 
 const userColors = ['#0f766e', '#2563eb', '#dc2626', '#9333ea', '#d97706', '#0891b2']
 
@@ -64,6 +70,7 @@ export const createFlowAppState = () : FlowAppState => {
     selectionMoveHiddenNodeIds: shallowRef<Set<string>>(new Set()),
     selectionMoveHiddenEdgeIds: shallowRef<Set<string>>(new Set()),
     selectionMovePreviewVersion: ref(0),
+    selectionOverlayGeometrySnapshot: shallowRef<SelectionOverlayGeometrySnapshot | null>(null),
     miniMapGeometryVersion: ref(0),
     lassoPreviewNodeIds: shallowRef<Set<string>>(new Set()),
     duplicateCount: ref(1),

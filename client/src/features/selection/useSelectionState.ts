@@ -3,6 +3,7 @@ import type { FlowEditorServices } from '../../app/flowEditorServices'
 import type { FlowEdge } from '../../domain/graph'
 import type { FlowRuntime } from '../../flowRuntime'
 import { getNodeElementById } from './selectionDom'
+import { getSelectionIdsKey } from './selectionOverlayGeometry'
 
 type SelectionUpdateOptions = {
   deferEffects?: boolean
@@ -115,6 +116,13 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
   const applySelectedNodes = (nodeIds: string[]) => {
     clearEdgeSelection()
 
+    if (
+      runtime.selectionOverlayGeometrySnapshot.value &&
+      runtime.selectionOverlayGeometrySnapshot.value.selectedIdsKey !== getSelectionIdsKey(nodeIds)
+    ) {
+      runtime.selectionOverlayGeometrySnapshot.value = null
+    }
+
     if (areSelectionIdsEqual(runtime.selectedNodeIds.value, nodeIds)) {
       return false
     }
@@ -171,6 +179,7 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
     }
 
     runtime.selectedNodeIds.value = new Set()
+    runtime.selectionOverlayGeometrySnapshot.value = null
     runSelectionSideEffects()
   }
 

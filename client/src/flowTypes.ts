@@ -50,11 +50,30 @@ export type SectionDragCandidateBounds = {
   area: number
 }
 
-export type SelectionMoveFlowBounds = {
+export type SelectionOverlayFlowBounds = {
   x: number
   y: number
   width: number
   height: number
+  padding?: number
+}
+
+export type SelectionOverlayFlowRect = {
+  id: string
+  bounds: SelectionOverlayFlowBounds
+}
+
+export type SelectionOverlayGeometry = {
+  selectedBounds: SelectionOverlayFlowBounds | null
+  outlineRects: SelectionOverlayFlowRect[]
+}
+
+export type SelectionOverlayGeometrySnapshot = SelectionOverlayGeometry & {
+  selectedIdsKey: string
+  selectionBoundsVersion: number
+}
+
+export type SelectionMoveFlowBounds = SelectionOverlayFlowBounds & {
   padding: number
 }
 
@@ -150,6 +169,7 @@ export type FlowAppState = {
   selectionMoveHiddenNodeIds: Ref<Set<string>>
   selectionMoveHiddenEdgeIds: Ref<Set<string>>
   selectionMovePreviewVersion: Ref<number>
+  selectionOverlayGeometrySnapshot: Ref<SelectionOverlayGeometrySnapshot | null>
   miniMapGeometryVersion: Ref<number>
   lassoPreviewNodeIds: Ref<Set<string>>
   duplicateCount: Ref<number>

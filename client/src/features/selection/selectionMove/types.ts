@@ -4,6 +4,7 @@ import type { FlowNode } from '../../../domain/graph'
 import type {
   SectionDragCandidateBounds,
   SelectionMoveDrag,
+  SelectionOverlayGeometrySnapshot,
   SelectionMovePreviewCounts,
   SelectionMoveRuntimeSnapshot,
   SelectionMovePreviewShapeKind
@@ -11,6 +12,7 @@ import type {
 
 export type UseSelectionMoveOptions = {
   getSelectedNodeIds: () => string[]
+  getCurrentSelectionOverlayGeometrySnapshot?: () => SelectionOverlayGeometrySnapshot | null
   commitPendingNodeSelection?: (nodeId: string, reason: 'click' | 'drop') => void
   cancelPendingNodeSelection?: (nodeId: string) => void
 }

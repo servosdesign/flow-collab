@@ -2,17 +2,26 @@ import type { SyncNode } from '@vue-flow-sync/shared'
 import { computed } from 'vue'
 import {
   createGraphCache,
-  getRenderedNodeBounds
+  getNodeBounds
 } from '../../domain/graph'
 import type { FlowRuntime } from '../../flowRuntime'
+import type {
+  SelectionOverlayFlowBounds,
+  SelectionOverlayGeometry,
+  SelectionOverlayFlowRect
+} from '../../flowTypes'
+import {
+  createSelectionOverlayGeometrySnapshot,
+  emptySelectionGeometry,
+  getRenderedOutlineBounds
+} from './selectionOverlayGeometry'
 import { areSelectionIdsEqual } from './useSelectionState'
 
 type LassoNodeBounds = {
   id: string
-  x: number
-  y: number
-  width: number
-  height: number
+  isSection: boolean
+  bounds: SelectionOverlayFlowBounds
+  renderedBounds: SelectionOverlayFlowBounds
 }
 
 type LassoPointerRect = {
@@ -47,13 +56,14 @@ export const useLassoSelection = (
     const previewIds = runtime.lassoPreviewNodeIds.value
     const rects: Array<{ id: string, style: Record<string, string> }> = []
 
-    for (const bounds of lassoBoundsCache) {
-      if (!previewIds.has(bounds.id)) {
+    for (const cachedBounds of lassoBoundsCache) {
+      if (!previewIds.has(cachedBounds.id)) {
         continue
       }
 
+      const bounds = cachedBounds.renderedBounds
       rects.push({
-        id: bounds.id,
+        id: cachedBounds.id,
         style: {
           left: `${bounds.x * viewport.zoom + viewport.x}px`,
           top: `${bounds.y * viewport.zoom + viewport.y}px`,
@@ -123,14 +133,13 @@ export const useLassoSelection = (
     const graph = createGraphCache(graphNodes)
 
     lassoBoundsCache = graphNodes.map((node) => {
-      const bounds = getRenderedNodeBounds(node, graph)
+      const bounds = getNodeBounds(node, graph)
 
       return {
         id: node.id,
-        x: bounds.x,
-        y: bounds.y,
-        width: bounds.width,
-        height: bounds.height
+        isSection: node.type === 'section',
+        bounds,
+        renderedBounds: getRenderedOutlineBounds(node, bounds)
       }
     })
     lassoBoundsCacheReady = true
@@ -143,7 +152,7 @@ export const useLassoSelection = (
   }
 
   const hasGraphBoundsOverlap = (
-    nodeBounds: LassoNodeBounds,
+    nodeBounds: SelectionOverlayFlowBounds,
     selectionBounds: { x: number, y: number, width: number, height: number }
   ) => {
     return (
@@ -175,13 +184,72 @@ export const useLassoSelection = (
     const selectionBounds = getFlowSelectionBounds(rect)
     const selectedIds: string[] = []
 
-    for (const bounds of lassoBoundsCache) {
-      if (hasGraphBoundsOverlap(bounds, selectionBounds)) {
-        selectedIds.push(bounds.id)
+    for (const cachedBounds of lassoBoundsCache) {
+      if (hasGraphBoundsOverlap(cachedBounds.renderedBounds, selectionBounds)) {
+        selectedIds.push(cachedBounds.id)
       }
     }
 
     return selectedIds
+  }
+
+  const getLassoSelectionOverlayGeometry = (
+    selectedIds: Set<string>
+  ) : SelectionOverlayGeometry => {
+    if (selectedIds.size < 2) {
+      return emptySelectionGeometry
+    }
+
+    let selectedCount = 0
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    const outlineRects: SelectionOverlayFlowRect[] = []
+
+    for (const cachedBounds of lassoBoundsCache) {
+      if (!selectedIds.has(cachedBounds.id)) {
+        continue
+      }
+
+      const bounds = cachedBounds.bounds
+      selectedCount += 1
+      minX = Math.min(minX, bounds.x)
+      minY = Math.min(minY, bounds.y)
+      maxX = Math.max(maxX, bounds.x + bounds.width)
+      maxY = Math.max(maxY, bounds.y + bounds.height)
+
+      if (!cachedBounds.isSection) {
+        outlineRects.push({
+          id: cachedBounds.id,
+          bounds: cachedBounds.renderedBounds
+        })
+      }
+    }
+
+    if (selectedCount === 0) {
+      return emptySelectionGeometry
+    }
+
+    return {
+      selectedBounds: {
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY
+      },
+      outlineRects
+    }
+  }
+
+  const seedLassoSelectionOverlayGeometrySnapshot = () => {
+    const selectedIds = runtime.lassoPreviewNodeIds.value
+
+    runtime.selectionOverlayGeometrySnapshot.value = createSelectionOverlayGeometrySnapshot(
+      selectedIds,
+      runtime.selectionBoundsVersion.value,
+      getLassoSelectionOverlayGeometry(selectedIds)
+    )
   }
 
   const updateLassoPreview = (rect: LassoPointerRect) => {
@@ -218,10 +286,14 @@ export const useLassoSelection = (
     updateLassoPreview(nextRect)
   }
 
-  const clearLassoPreview = () => {
+  const clearLassoPreview = (clearOverlaySnapshot = true) => {
     if (runtime.timers.lassoSelectionFrame) {
       window.cancelAnimationFrame(runtime.timers.lassoSelectionFrame)
       runtime.timers.lassoSelectionFrame = undefined
+    }
+
+    if (clearOverlaySnapshot) {
+      runtime.selectionOverlayGeometrySnapshot.value = null
     }
 
     pendingLassoRect = null
@@ -290,8 +362,9 @@ export const useLassoSelection = (
       currentClientX: event.clientX,
       currentClientY: event.clientY
     })
+    seedLassoSelectionOverlayGeometrySnapshot()
     options.setSelectedNodesImmediate(Array.from(runtime.lassoPreviewNodeIds.value))
-    clearLassoPreview()
+    clearLassoPreview(false)
     runtime.interaction.suppressNextContextMenu = false
   }
 
@@ -308,6 +381,7 @@ export const useLassoSelection = (
     }
     lassoBoundsCache = []
     lassoBoundsCacheReady = false
+    runtime.selectionOverlayGeometrySnapshot.value = null
     runtime.isLassoSelecting.value = true
     runtime.lassoPreviewNodeIds.value = new Set()
     runtime.rightSelection.value = {
