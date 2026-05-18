@@ -384,7 +384,6 @@ export const useSelectionMove = (
     void runtime.setViewport(nextViewport)
     syncSelectionMoveGraphDelta(drag)
     scheduleSelectionMoveFrame()
-    services.scheduleSelectionBoundsRefresh()
 
     return true
   }
@@ -669,7 +668,6 @@ export const useSelectionMove = (
     runtime.interaction.selectionMoveDrag = null
     runtime.isMovingSelection.value = false
     bumpSelectionMovePreviewVersion()
-    services.scheduleSelectionBoundsRefresh()
 
     if (committed) {
       clearSelectionMovePresentationAfterPaint(false, () => {
@@ -735,7 +733,6 @@ export const useSelectionMove = (
     if (!drag) {
       runtime.interaction.selectionMoveDrag = null
       runtime.isMovingSelection.value = false
-      services.scheduleSelectionBoundsRefresh()
       clearSelectionMovePresentation()
       return
     }
@@ -1093,7 +1090,6 @@ export const useSelectionMove = (
     runtime.isResizingNode.value = false
     bumpSelectionMovePreviewVersion()
     clearSelectionMovePresentation()
-    services.scheduleSelectionBoundsRefresh()
     if (pendingSelectionNodeId) {
       options.cancelPendingNodeSelection?.(pendingSelectionNodeId)
     }

@@ -2,15 +2,40 @@ import { computed } from 'vue'
 import type { FlowEditorServices } from '../../app/flowEditorServices'
 import {
   createGraphCache,
+  getMinimumNodeHeight,
   getNodeBounds,
-  getRenderedNodeBounds
+  type GraphCache
 } from '../../domain/graph'
 import type { FlowRuntime } from '../../flowRuntime'
+import type { SyncNode } from '@vue-flow-sync/shared'
 
 const selectionBoundsPadding = 4
 
+type FlowBounds = {
+  x: number
+  y: number
+  width: number
+  height: number
+  padding?: number
+}
+
+type SelectedNodeOutlineFlowRect = {
+  id: string
+  bounds: FlowBounds
+}
+
+type SelectionOverlayGeometry = {
+  selectedBounds: FlowBounds | null
+  outlineRects: SelectedNodeOutlineFlowRect[]
+}
+
+const emptySelectionGeometry: SelectionOverlayGeometry = {
+  selectedBounds: null,
+  outlineRects: []
+}
+
 const getFlowBoundsStyle = (
-  bounds: { x: number, y: number, width: number, height: number, padding?: number },
+  bounds: FlowBounds,
   viewport: { x: number, y: number, zoom: number }
 ) => {
   const padding = bounds.padding ?? selectionBoundsPadding
@@ -23,16 +48,87 @@ const getFlowBoundsStyle = (
   }
 }
 
+const getFlowRectStyle = (
+  bounds: FlowBounds,
+  viewport: { x: number, y: number, zoom: number }
+) => {
+  return {
+    left: `${bounds.x * viewport.zoom + viewport.x}px`,
+    top: `${bounds.y * viewport.zoom + viewport.y}px`,
+    width: `${bounds.width * viewport.zoom}px`,
+    height: `${bounds.height * viewport.zoom}px`
+  }
+}
+
+const getRenderedOutlineBounds = (node: SyncNode, bounds: FlowBounds) => {
+  if (node.type !== 'item') {
+    return bounds
+  }
+
+  return {
+    ...bounds,
+    height: Math.max(bounds.height, getMinimumNodeHeight(node))
+  }
+}
+
+const getSelectionGeometry = (
+  graphNodes: SyncNode[],
+  graph: GraphCache,
+  selectedIds: Set<string>,
+  includeOutlineRects: boolean
+) : SelectionOverlayGeometry => {
+  let selectedCount = 0
+  let minX = Number.POSITIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  const outlineRects: SelectedNodeOutlineFlowRect[] = []
+
+  for (const node of graphNodes) {
+    if (!selectedIds.has(node.id)) {
+      continue
+    }
+
+    const bounds = getNodeBounds(node, graph)
+    selectedCount += 1
+    minX = Math.min(minX, bounds.x)
+    minY = Math.min(minY, bounds.y)
+    maxX = Math.max(maxX, bounds.x + bounds.width)
+    maxY = Math.max(maxY, bounds.y + bounds.height)
+
+    if (includeOutlineRects && node.type !== 'section') {
+      outlineRects.push({
+        id: node.id,
+        bounds: getRenderedOutlineBounds(node, bounds)
+      })
+    }
+  }
+
+  if (selectedCount === 0) {
+    return emptySelectionGeometry
+  }
+
+  return {
+    selectedBounds: {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
+    },
+    outlineRects
+  }
+}
+
 export const useSelectionOverlayModel = (
   runtime: FlowRuntime,
   services: FlowEditorServices
 ) => {
-  const selectedBoundsStyle = computed<Record<string, string> | null>(() => {
+  const selectedFlowGeometry = computed<SelectionOverlayGeometry>(() => {
     if (
       !runtime.isLoggedIn.value ||
       runtime.rightSelection.value
     ) {
-      return null
+      return emptySelectionGeometry
     }
 
     const selectedNodeCount = runtime.selectedNodeIds.value.size
@@ -47,19 +143,24 @@ export const useSelectionOverlayModel = (
     )
 
     if (!hasSelectionMoveBounds && !sectionDragPreview && selectedNodeCount < 2) {
-      return null
+      return emptySelectionGeometry
     }
 
     void runtime.selectionBoundsVersion.value
-    const viewport = runtime.currentViewport.value
 
     if (hasSelectionMoveBounds && selectionMoveDrag?.selectedFlowBounds) {
-      return getFlowBoundsStyle(selectionMoveDrag.selectedFlowBounds, viewport)
+      return {
+        selectedBounds: selectionMoveDrag.selectedFlowBounds,
+        outlineRects: []
+      }
     }
 
     if (sectionDragPreview) {
       if (sectionDragPreview.selectedFlowBounds) {
-        return getFlowBoundsStyle(sectionDragPreview.selectedFlowBounds, viewport)
+        return {
+          selectedBounds: sectionDragPreview.selectedFlowBounds,
+          outlineRects: []
+        }
       }
 
       const graphNodes = services.getCurrentSyncNodes()
@@ -67,90 +168,58 @@ export const useSelectionOverlayModel = (
       const section = graph.nodeById.get(sectionDragPreview.sectionId)
 
       if (!section) {
-        return null
+        return emptySelectionGeometry
       }
 
-      const bounds = getNodeBounds(section, graph)
-      return getFlowBoundsStyle(bounds, viewport)
+      return {
+        selectedBounds: getNodeBounds(section, graph),
+        outlineRects: []
+      }
     }
 
     if (selectedNodeCount < 2) {
-      return null
+      return emptySelectionGeometry
     }
 
     const graphNodes = services.getCurrentSyncNodes()
     const graph = createGraphCache(graphNodes)
-    const selectedIds = runtime.selectedNodeIds.value
-    let selectedCount = 0
-    let minX = Number.POSITIVE_INFINITY
-    let minY = Number.POSITIVE_INFINITY
-    let maxX = Number.NEGATIVE_INFINITY
-    let maxY = Number.NEGATIVE_INFINITY
+    const includeOutlineRects =
+      !runtime.isLassoSelecting.value &&
+      !runtime.isMovingSelection.value
 
-    for (const node of graphNodes) {
-      if (!selectedIds.has(node.id)) {
-        continue
-      }
+    return getSelectionGeometry(
+      graphNodes,
+      graph,
+      runtime.selectedNodeIds.value,
+      includeOutlineRects
+    )
+  })
 
-      const bounds = getNodeBounds(node, graph)
-      selectedCount += 1
-      minX = Math.min(minX, bounds.x)
-      minY = Math.min(minY, bounds.y)
-      maxX = Math.max(maxX, bounds.x + bounds.width)
-      maxY = Math.max(maxY, bounds.y + bounds.height)
-    }
+  const selectedBoundsStyle = computed<Record<string, string> | null>(() => {
+    const bounds = selectedFlowGeometry.value.selectedBounds
 
-    if (selectedCount === 0) {
+    if (!bounds) {
       return null
     }
 
-    return getFlowBoundsStyle({
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY
-    }, viewport)
+    return getFlowBoundsStyle(bounds, runtime.currentViewport.value)
   })
 
   const isSingleNodeSelection = computed(() => runtime.selectedNodeIds.value.size <= 1)
 
   const selectedNodeOutlineRects = computed<Array<{ id: string, style: Record<string, string> }>>(() => {
-    if (
-      !runtime.isLoggedIn.value ||
-      runtime.rightSelection.value ||
-      runtime.isLassoSelecting.value ||
-      runtime.isMovingSelection.value ||
-      runtime.selectedNodeIds.value.size < 2
-    ) {
+    const rects = selectedFlowGeometry.value.outlineRects
+
+    if (rects.length === 0) {
       return []
     }
 
-    void runtime.selectionBoundsVersion.value
-    const selectedIds = runtime.selectedNodeIds.value
     const viewport = runtime.currentViewport.value
-    const graphNodes = services.getCurrentSyncNodes()
-    const graph = createGraphCache(graphNodes)
-    const rects: Array<{ id: string, style: Record<string, string> }> = []
 
-    for (const node of graphNodes) {
-      if (!selectedIds.has(node.id) || node.type === 'section') {
-        continue
-      }
-
-      const bounds = getRenderedNodeBounds(node, graph)
-
-      rects.push({
-        id: node.id,
-        style: {
-          left: `${bounds.x * viewport.zoom + viewport.x}px`,
-          top: `${bounds.y * viewport.zoom + viewport.y}px`,
-          width: `${bounds.width * viewport.zoom}px`,
-          height: `${bounds.height * viewport.zoom}px`
-        }
-      })
-    }
-
-    return rects
+    return rects.map((rect) => ({
+      id: rect.id,
+      style: getFlowRectStyle(rect.bounds, viewport)
+    }))
   })
 
   const getSelectedClientBounds = () => {

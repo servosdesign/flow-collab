@@ -60,18 +60,6 @@ export const useViewport = (runtime: FlowRuntime) => {
     return runtime.currentViewport.value
   }
 
-  const needsViewportSelectionBoundsRefresh = () => {
-    return (
-      runtime.selectedNodeIds.value.size > 1 ||
-      runtime.isLassoSelecting.value ||
-      runtime.lassoPreviewNodeIds.value.size > 0 ||
-      runtime.rightSelection.value !== null ||
-      runtime.sectionNodeDragPreview.value !== null ||
-      runtime.interaction.selectionMoveDrag !== null ||
-      runtime.isMovingSelection.value
-    )
-  }
-
   const refreshSelectionBounds = (payload?: MovePayload) => {
     const nextViewport = getViewportFromPayload(payload)
     const viewportChanged = hasViewportChanged(runtime.currentViewport.value, nextViewport)
@@ -86,10 +74,6 @@ export const useViewport = (runtime: FlowRuntime) => {
 
     if (viewportChanged && runtime.interaction.selectionMoveDrag) {
       runtime.interaction.scheduleSelectionMoveFrame?.()
-    }
-
-    if (viewportChanged && needsViewportSelectionBoundsRefresh()) {
-      scheduleSelectionBoundsRefresh()
     }
   }
 

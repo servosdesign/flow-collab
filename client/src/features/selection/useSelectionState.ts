@@ -104,7 +104,6 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
 
     scheduleSelectedRootClassSync()
     nextTick(() => {
-      services.scheduleSelectionBoundsRefresh()
       services.updatePresenceSelection()
       if (shouldFinishDropSettle || runtime.isDropSettling.value) {
         runtime.isDropSettling.value = false
