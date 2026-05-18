@@ -164,8 +164,8 @@ export const useEditorViewModels = ({
   }
 
   const handleViewportMoveEnd = (payload?: Parameters<typeof viewport.handleViewportMove>[0]) => {
-    viewport.handleViewportMove(payload)
-    realtime.scheduleGraphSnapshot(500)
+    viewport.handleViewportMoveEnd(payload)
+    realtime.scheduleViewportSnapshot(500)
   }
 
   const handleNodeDragStop = (payload: Parameters<typeof nodeActions.handleNodeDragStop>[0]) => {

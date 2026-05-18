@@ -399,6 +399,28 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
     submitOperation(operation)
   }
 
+  const submitViewportSnapshot = () => {
+    const document = runtime.flowDocument.value
+
+    if (!document || runtime.isApplyingRemote.value) {
+      return
+    }
+
+    const nextViewport = runtime.currentViewport.value
+
+    if (sameJson(document.data.viewport, nextViewport)) {
+      return
+    }
+
+    submitOperation([
+      {
+        p: ['viewport'],
+        od: document.data.viewport,
+        oi: nextViewport
+      }
+    ])
+  }
+
   const documentMatchesLocal = (document: SyncFlowDocument) => {
     const localNodes = orderNodesByHierarchy(services.getCurrentSyncNodes())
     const documentNodes = orderNodesByHierarchy(cloneJson(document.nodes))
@@ -408,12 +430,32 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
   }
 
   const scheduleGraphSnapshot = (delay = 250) => {
+    window.clearTimeout(runtime.timers.viewportCommitTimer)
+    runtime.timers.viewportCommitTimer = undefined
     window.clearTimeout(runtime.timers.graphCommitTimer)
-    runtime.timers.graphCommitTimer = window.setTimeout(submitGraphSnapshot, delay)
+    runtime.timers.graphCommitTimer = window.setTimeout(() => {
+      runtime.timers.graphCommitTimer = undefined
+      submitGraphSnapshot()
+    }, delay)
+  }
+
+  const scheduleViewportSnapshot = (delay = 250) => {
+    if (runtime.timers.graphCommitTimer) {
+      return
+    }
+
+    window.clearTimeout(runtime.timers.viewportCommitTimer)
+    runtime.timers.viewportCommitTimer = window.setTimeout(() => {
+      runtime.timers.viewportCommitTimer = undefined
+      submitViewportSnapshot()
+    }, delay)
   }
 
   const cleanupRealtimeSync = () => {
     window.clearTimeout(runtime.timers.graphCommitTimer)
+    runtime.timers.graphCommitTimer = undefined
+    window.clearTimeout(runtime.timers.viewportCommitTimer)
+    runtime.timers.viewportCommitTimer = undefined
   }
 
   const resetFlowToSeed = async () => {
@@ -423,6 +465,8 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
 
     window.clearTimeout(runtime.timers.graphCommitTimer)
     runtime.timers.graphCommitTimer = undefined
+    window.clearTimeout(runtime.timers.viewportCommitTimer)
+    runtime.timers.viewportCommitTimer = undefined
     isResettingFlow.value = true
     runtime.isFlowLoading.value = true
     runtime.errorMessage.value = ''
@@ -455,8 +499,10 @@ export const useRealtimeSync = (runtime: FlowRuntime, services: FlowEditorServic
     isResettingFlow,
     resetFlowToSeed,
     scheduleGraphSnapshot,
+    scheduleViewportSnapshot,
     submitGraphReplacement,
     submitGraphSnapshot,
+    submitViewportSnapshot,
     submitOperation
   }
 }

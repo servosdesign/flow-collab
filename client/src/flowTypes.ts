@@ -130,6 +130,7 @@ export type SelectionMoveDrag = {
 
 export type FlowTimers = {
   graphCommitTimer?: number
+  viewportCommitTimer?: number
   cursorCommitTimer?: number
   resizeCommitTimer?: number
   selectionMoveCommitFrame?: number

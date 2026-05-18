@@ -82,6 +82,10 @@ export const useViewport = (runtime: FlowRuntime) => {
     refreshSelectionBounds(payload)
   }
 
+  const handleViewportMoveEnd = (payload?: MovePayload) => {
+    refreshSelectionBounds(payload)
+  }
+
   const cleanupViewport = () => {
     if (runtime.timers.selectionBoundsFrame) {
       window.cancelAnimationFrame(runtime.timers.selectionBoundsFrame)
@@ -92,6 +96,7 @@ export const useViewport = (runtime: FlowRuntime) => {
   return {
     cleanupViewport,
     handleViewportMove,
+    handleViewportMoveEnd,
     refreshSelectionBounds,
     scheduleSelectionBoundsRefresh,
     updateCanvasSize
