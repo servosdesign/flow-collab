@@ -79,11 +79,6 @@
   box-shadow: 0 8px 22px rgb(22 33 43 / 8%);
 }
 
-.logged-out .vue-flow__edge-path {
-  stroke: #94a3b8;
-  stroke-width: 1.5;
-}
-
 .logged-out .vue-flow__handle,
 .logged-out .node-presence,
 .logged-out .vue-flow__resize-control {

@@ -1,3 +1,5 @@
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import js from '@eslint/js'
 import stylistic from '@stylistic/eslint-plugin'
 import importPlugin from 'eslint-plugin-import'
@@ -7,6 +9,8 @@ import globals from 'globals'
 import tseslint from 'typescript-eslint'
 import vue from 'eslint-plugin-vue'
 import vueParser from 'vue-eslint-parser'
+
+const tsconfigRootDir = dirname(fileURLToPath(import.meta.url))
 
 const standardStylisticRules = {
   '@stylistic/array-bracket-spacing': ['error', 'never'],
@@ -75,6 +79,9 @@ export default tseslint.config(
         ...globals.browser,
         ...globals.node
       },
+      parserOptions: {
+        tsconfigRootDir
+      },
       parser: tseslint.parser,
       sourceType: 'module'
     }
@@ -89,6 +96,7 @@ export default tseslint.config(
         ecmaVersion: 'latest',
         extraFileExtensions: ['.vue'],
         parser: tseslint.parser,
+        tsconfigRootDir,
         sourceType: 'module'
       },
       sourceType: 'module'

@@ -1,3 +1,5 @@
+import { dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import js from '@eslint/js'
 import stylistic from '@stylistic/eslint-plugin'
 import importPlugin from 'eslint-plugin-import'
@@ -5,6 +7,8 @@ import n from 'eslint-plugin-n'
 import promise from 'eslint-plugin-promise'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
+
+const tsconfigRootDir = dirname(fileURLToPath(import.meta.url))
 
 const standardStylisticRules = {
   '@stylistic/array-bracket-spacing': ['error', 'never'],
@@ -69,6 +73,9 @@ export default tseslint.config(
     languageOptions: {
       ecmaVersion: 'latest',
       globals: globals.node,
+      parserOptions: {
+        tsconfigRootDir
+      },
       parser: tseslint.parser,
       sourceType: 'module'
     },

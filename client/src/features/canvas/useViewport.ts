@@ -47,7 +47,7 @@ export const useViewport = (runtime: FlowRuntime) => {
 
   const getViewportFromPayload = (payload?: MovePayload) => {
     if (!payload) {
-      return runtime.toObject().viewport
+      return runtime.currentViewport.value
     }
 
     if ('x' in payload && 'y' in payload && 'zoom' in payload) {

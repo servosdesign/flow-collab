@@ -34,22 +34,6 @@ export type ResolvedEdgeGeometry = {
 
 export type EdgeNodeOffsets = Map<string, { x: number, y: number }>
 
-export const edgeHasClass = (className: EdgeClassValue, name: string) => {
-  if (typeof className === 'string') {
-    return className.split(/\s+/).includes(name)
-  }
-
-  if (Array.isArray(className)) {
-    return className.includes(name)
-  }
-
-  if (className && typeof className === 'object') {
-    return Boolean((className as Record<string, unknown>)[name])
-  }
-
-  return false
-}
-
 export const edgeClassSignature = (className: EdgeClassValue) => {
   if (typeof className === 'string') {
     return className
@@ -218,13 +202,6 @@ export const resolveEdgeGeometry = (input: EdgeGeometryInput) : ResolvedEdgeGeom
     sourcePosition,
     targetPosition
   }
-}
-
-export const resolveSectionThroughEdgePath = (input: EdgeGeometryInput) => {
-  return resolveEdgeGeometry({
-    ...input,
-    type: 'section-through'
-  }).path
 }
 
 export const resolveGraphEdgeGeometry = (edge: GraphEdge) : ResolvedEdgeGeometry | null => {

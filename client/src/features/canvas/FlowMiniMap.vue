@@ -674,7 +674,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="flowchart-canvas-minimap vue-flow__minimap"
+    class="flowchart-canvas-minimap"
     :class="{ pannable: isLoggedIn, zoomable: isLoggedIn }"
     :style="rootStyle"
     @contextmenu.prevent.stop

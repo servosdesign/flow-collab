@@ -3,10 +3,9 @@ import type { FlowRuntime } from '../../../flowRuntime'
 import type { SelectionMoveDrag } from '../../../flowTypes'
 import {
   hideSelectedNodesDuringBundleMove,
-  selectionDragHiddenEdgeClass,
   selectionDragHiddenNodeClass
 } from './constants'
-import { getEdgeElementById, getNodeElementById } from '../selectionDom'
+import { getNodeElementById } from '../selectionDom'
 import type {
   HiddenElementClassSnapshot,
   RuntimePositionedFlowNode,
@@ -23,7 +22,6 @@ export const createSelectionMovePresentation = (
   let selectionMoveHiddenEdgeIds = new Set<string>()
   let visibleDragElementSnapshots = new Map<string, VisibleDragElementSnapshot>()
   let hiddenNodeClassSnapshots = new Map<string, HiddenElementClassSnapshot>()
-  let hiddenEdgeClassSnapshots = new Map<string, HiddenElementClassSnapshot>()
 
   const getSelectionMovePreviewElement = () => {
     return selectionMovePreviewElement
@@ -48,13 +46,7 @@ export const createSelectionMovePresentation = (
         snapshot.element.classList.remove(selectionDragHiddenNodeClass)
       }
     })
-    hiddenEdgeClassSnapshots.forEach((snapshot) => {
-      if (snapshot.element.isConnected && !snapshot.hadClass) {
-        snapshot.element.classList.remove(selectionDragHiddenEdgeClass)
-      }
-    })
     hiddenNodeClassSnapshots = new Map()
-    hiddenEdgeClassSnapshots = new Map()
   }
 
   const applyHiddenClassSnapshots = (
@@ -87,8 +79,7 @@ export const createSelectionMovePresentation = (
     if (
       selectionMoveHiddenNodeIds.size === 0 &&
       selectionMoveHiddenEdgeIds.size === 0 &&
-      hiddenNodeClassSnapshots.size === 0 &&
-      hiddenEdgeClassSnapshots.size === 0
+      hiddenNodeClassSnapshots.size === 0
     ) {
       return
     }
@@ -121,11 +112,6 @@ export const createSelectionMovePresentation = (
       selectionMoveHiddenNodeIds,
       selectionDragHiddenNodeClass,
       (nodeId) => getNodeElementById(runtime, nodeId)
-    )
-    hiddenEdgeClassSnapshots = applyHiddenClassSnapshots(
-      selectionMoveHiddenEdgeIds,
-      selectionDragHiddenEdgeClass,
-      (edgeId) => getEdgeElementById(runtime, edgeId)
     )
     syncSelectionMoveHiddenRefs()
   }

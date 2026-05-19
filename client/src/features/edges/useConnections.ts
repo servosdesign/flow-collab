@@ -1,4 +1,4 @@
-import { MarkerType, type Connection as FlowConnection, type EdgeUpdateEvent } from '@vue-flow/core'
+import { MarkerType, type Connection as FlowConnection } from '@vue-flow/core'
 import { nextTick } from 'vue'
 import {
   createGraphCache,
@@ -37,16 +37,20 @@ export const useConnections = (runtime: FlowRuntime, services: FlowEditorService
       markerEnd: MarkerType.ArrowClosed
     }
 
-    runtime.addEdges([nextEdge])
+    runtime.edges.value = [...runtime.edges.value, nextEdge as FlowEdge]
     nextTick(() => {
       runtime.updateNodeInternals?.([connection.source, connection.target].filter(Boolean) as string[])
       services.submitGraphSnapshot()
     })
   }
 
-  const handleEdgeUpdate = (payload: EdgeUpdateEvent) => {
+  const updateEdgeConnectionById = (edgeId: string, connection: FlowConnection) => {
     if (!runtime.isLoggedIn.value) {
-      return
+      return false
+    }
+
+    if (!services.isValidSectionConnection(connection)) {
+      return false
     }
 
     const nextEdges: FlowEdge[] = []
@@ -55,26 +59,28 @@ export const useConnections = (runtime: FlowRuntime, services: FlowEditorService
       nextEdges.push({ ...edge } as FlowEdge)
     })
 
-    const edge = nextEdges.find((candidate) => candidate.id === payload.edge.id)
+    const edge = nextEdges.find((candidate) => candidate.id === edgeId)
 
     if (edge) {
-      edge.source = payload.connection.source ?? edge.source
-      edge.target = payload.connection.target ?? edge.target
-      edge.sourceHandle = payload.connection.sourceHandle ?? edge.sourceHandle ?? null
-      edge.targetHandle = payload.connection.targetHandle ?? edge.targetHandle ?? null
+      edge.source = connection.source
+      edge.target = connection.target
+      edge.sourceHandle = connection.sourceHandle ?? null
+      edge.targetHandle = connection.targetHandle ?? null
       edge.type = getEdgeRenderType(
         edge,
         createGraphCache(services.getCurrentSyncNodes())
       )
       edge.markerEnd = MarkerType.ArrowClosed
       runtime.edges.value = nextEdges
+      nextTick(() => services.submitGraphSnapshot())
+      return true
     }
 
-    nextTick(() => services.submitGraphSnapshot())
+    return false
   }
 
   return {
     handleConnect,
-    handleEdgeUpdate
+    updateEdgeConnectionById
   }
 }

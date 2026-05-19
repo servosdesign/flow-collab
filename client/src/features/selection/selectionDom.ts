@@ -12,12 +12,6 @@ export const getNodeElementById = (runtime: FlowRuntime, nodeId: string) => {
   return runtime.canvasPanel.value?.querySelector<HTMLElement>(selector) ?? null
 }
 
-export const getEdgeElementById = (runtime: FlowRuntime, edgeId: string) => {
-  const selector = `.vue-flow__edge[data-id="${escapeCssAttributeValue(edgeId)}"]`
-
-  return runtime.canvasPanel.value?.querySelector<HTMLElement>(selector) ?? null
-}
-
 export const getNodeElementFromTarget = (target: EventTarget | null) => {
   return target instanceof Element
     ? target.closest<HTMLElement>('.vue-flow__node[data-id]')

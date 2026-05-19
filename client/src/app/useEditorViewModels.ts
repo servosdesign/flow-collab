@@ -1,10 +1,9 @@
 import type { SyncPresenceUser } from '@vue-flow-sync/shared'
-import { computed, type Component } from 'vue'
+import { computed } from 'vue'
 import type { FlowNode } from '../domain/graph'
-import type { useGraphState } from '../domain/graph/useGraphState'
 import type { useViewport } from '../features/canvas/useViewport'
 import type { useContextMenu } from '../features/context-menu/useContextMenu'
-import type { useConnections } from '../features/edges/useConnections'
+import type { useCanvasEdges } from '../features/edges/useCanvasEdges'
 import type { useNodeActions } from '../features/nodes/useNodeActions'
 import type { useResize } from '../features/nodes/useResize'
 import type { usePresence } from '../features/presence/usePresence'
@@ -13,10 +12,8 @@ import type { useSelection } from '../features/selection/useSelection'
 import type { FlowAppState } from '../flowTypes'
 
 type EditorViewModelOptions = {
-  connections: ReturnType<typeof useConnections>
+  canvasEdges: ReturnType<typeof useCanvasEdges>
   contextMenu: ReturnType<typeof useContextMenu>
-  edgeTypes: Record<string, Component>
-  graphState: ReturnType<typeof useGraphState>
   nodeActions: ReturnType<typeof useNodeActions>
   presence: ReturnType<typeof usePresence>
   realtime: ReturnType<typeof useRealtimeSync>
@@ -27,10 +24,8 @@ type EditorViewModelOptions = {
 }
 
 export const useEditorViewModels = ({
-  connections,
+  canvasEdges,
   contextMenu,
-  edgeTypes,
-  graphState,
   nodeActions,
   presence,
   realtime,
@@ -68,7 +63,9 @@ export const useEditorViewModels = ({
   const nodeCount = computed(() => nodes.value.length)
   const edgeCount = computed(() => edges.value.length)
   const hasError = computed(() => errorMessage.value.length > 0)
-  const isCanvasLoading = computed(() => isFlowLoading.value || realtime.isResettingFlow.value)
+  const isCanvasLoading = computed(
+    () => isFlowLoading.value || realtime.state.isResettingFlow.value
+  )
   const emptySelectedUsers: SyncPresenceUser[] = []
   let selectedUsersSignature = ''
   let cachedSelectedUsersByNodeId = new Map<string, SyncPresenceUser[]>()
@@ -150,8 +147,8 @@ export const useEditorViewModels = ({
   const shouldShowNodeResizer = (nodeId: string) => {
     return (
       !isLassoSelecting.value &&
-      selection.isSingleNodeSelection.value &&
-      selection.isNodeSelected(nodeId)
+      selection.queries.isSingleNodeSelection.value &&
+      selection.queries.isNodeSelected(nodeId)
     )
   }
 
@@ -165,52 +162,65 @@ export const useEditorViewModels = ({
 
   const handleViewportMoveEnd = (payload?: Parameters<typeof viewport.handleViewportMove>[0]) => {
     viewport.handleViewportMoveEnd(payload)
-    realtime.scheduleViewportSnapshot(500)
+    realtime.snapshots.scheduleViewportSnapshot(500)
   }
 
   const handleNodeDragStop = (payload: Parameters<typeof nodeActions.handleNodeDragStop>[0]) => {
     try {
       nodeActions.handleNodeDragStop(payload)
     } finally {
-      selection.handleNodeDragStop()
+      selection.events.handleNodeDragStop()
     }
   }
 
   return {
     canvasSurface: {
       canvasPanel,
-      handleCanvasContextMenu: contextMenu.handleCanvasContextMenu,
-      handleCanvasPointerDown: selection.handleCanvasPointerDown,
-      handleCanvasPointerLeave: selection.handleCanvasPointerLeave,
-      handleCanvasPointerMove: selection.handleCanvasPointerMove,
+      handleCanvasContextMenu: (event: MouseEvent) => {
+        if (canvasEdges.events.handleContextMenu(event)) {
+          return
+        }
+
+        contextMenu.handleCanvasContextMenu(event)
+      },
+      handleCanvasPointerDown: (event: PointerEvent) => {
+        if (canvasEdges.events.handlePointerDown(event)) {
+          return
+        }
+
+        selection.events.handleCanvasPointerDown(event)
+      },
+      handleCanvasPointerLeave: () => {
+        canvasEdges.events.handlePointerLeave()
+        selection.events.handleCanvasPointerLeave()
+      },
+      handleCanvasPointerMove: (event: PointerEvent) => {
+        if (canvasEdges.events.handlePointerMove(event)) {
+          return
+        }
+
+        selection.events.handleCanvasPointerMove(event)
+      },
       isHoveringSelection,
       isMovingSelection
     },
     flowGraph: {
+      canvasEdges,
       edges,
-      edgeTypes,
       events: {
         closeContextMenu: contextMenu.closeContextMenu,
-        handleConnect: connections.handleConnect,
         handleCreateDrop: nodeActions.handleCreateDrop,
-        handleEdgeClick: selection.handleEdgeClick,
-        handleEdgeUpdate: connections.handleEdgeUpdate,
-        handleNodeClick: selection.handleNodeClick,
+        handleNodeClick: selection.events.handleNodeClick,
         handleNodeDrag: nodeActions.handleNodeDrag,
-        handleNodeDragStart: selection.handleNodeDragStart,
+        handleNodeDragStart: selection.events.handleNodeDragStart,
         handleNodeDragStop,
-        handleNodesChange: selection.handleNodesChange,
+        handleNodesChange: selection.events.handleNodesChange,
         handlePaneClick: nodeActions.handlePaneClick,
-        handleSelectionDrag: nodeActions.handleSelectionDrag,
-        handleSelectionDragStop: nodeActions.handleSelectionDragStop,
         handleViewportMove: viewport.handleViewportMove,
         handleViewportMoveEnd,
-        openEdgeContextMenu: contextMenu.openEdgeContextMenu,
-        openNodeContextMenu: contextMenu.openNodeContextMenu,
-        openSelectionContextMenu: contextMenu.openSelectionContextMenu
+        openNodeContextMenu: contextMenu.openNodeContextMenu
       },
       isLoggedIn,
-      isValidSectionConnection: graphState.isValidSectionConnection,
       nodes: nodes as typeof nodes & { value: FlowNode[] },
       selectionMoveHiddenEdgeIds,
       selectionMovePreviewVersion,
@@ -245,7 +255,7 @@ export const useEditorViewModels = ({
       getSelectedUsersForNode,
       isLassoSelecting,
       isLoggedIn,
-      isNodeSelected: selection.isNodeVisuallySelected,
+      isNodeSelected: selection.queries.isNodeVisuallySelected,
       openNodeMenuButton: contextMenu.openNodeMenuButton,
       resizeNode: resize.resizeNode,
       resizeNodePreview: resize.resizeNodePreview,
@@ -260,13 +270,13 @@ export const useEditorViewModels = ({
       remoteCursors: presence.remoteCursors
     },
     selectionOverlay: {
-      handleSelectionMoveWheel: selection.handleSelectionMoveWheel,
-      handleSelectedBoundsPointerDown: selection.handleSelectedBoundsPointerDown,
-      lassoPreviewRects: selection.lassoPreviewRects,
+      handleSelectionMoveWheel: selection.events.handleSelectionMoveWheel,
+      handleSelectedBoundsPointerDown: selection.events.handleSelectedBoundsPointerDown,
+      lassoPreviewRects: selection.overlay.lassoPreviewRects,
       openSelectedBoundsContextMenu: contextMenu.openSelectedBoundsContextMenu,
-      selectedNodeOutlineRects: selection.selectedNodeOutlineRects,
-      selectedBoundsStyle: selection.selectedBoundsStyle,
-      selectionMovePreview: selection.selectionMovePreview
+      selectedNodeOutlineRects: selection.overlay.selectedNodeOutlineRects,
+      selectedBoundsStyle: selection.overlay.selectedBoundsStyle,
+      selectionMovePreview: selection.overlay.selectionMovePreview
     },
     shell: {
       closeContextMenu: contextMenu.closeContextMenu,
@@ -285,8 +295,8 @@ export const useEditorViewModels = ({
       logoutUser: presence.logoutUser,
       nodeCount,
       pendingCreate,
-      isResettingFlow: realtime.isResettingFlow,
-      resetFlowToSeed: realtime.resetFlowToSeed,
+      isResettingFlow: realtime.state.isResettingFlow,
+      resetFlowToSeed: realtime.commands.resetFlowToSeed,
       setCreateMode: nodeActions.setCreateMode,
       status,
       userInitials,

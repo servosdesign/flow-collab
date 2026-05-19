@@ -1,4 +1,4 @@
-import type { EdgeMouseEvent, NodeMouseEvent } from '@vue-flow/core'
+import type { NodeMouseEvent } from '@vue-flow/core'
 import { computed } from 'vue'
 import type { SyncEdge } from '@vue-flow-sync/shared'
 import type { FlowEditorServices } from '../../app/flowEditorServices'
@@ -159,23 +159,23 @@ export const useContextMenu = (runtime: FlowRuntime, services: FlowEditorService
     }
   }
 
-  const openEdgeContextMenu = (payload: EdgeMouseEvent) => {
-    if (!runtime.isLoggedIn.value || !(payload.event instanceof MouseEvent)) {
+  const openEdgeContextMenuById = (edgeId: string, event: MouseEvent) => {
+    if (!runtime.isLoggedIn.value) {
       return
     }
 
-    if (consumeSuppressedContextMenu(payload.event)) {
+    if (consumeSuppressedContextMenu(event)) {
       return
     }
 
-    payload.event.preventDefault()
-    payload.event.stopPropagation()
+    event.preventDefault()
+    event.stopPropagation()
     runtime.duplicateCount.value = 1
     runtime.contextTarget.value = {
       kind: 'edge',
-      id: payload.edge.id,
-      x: payload.event.clientX,
-      y: payload.event.clientY
+      id: edgeId,
+      x: event.clientX,
+      y: event.clientY
     }
   }
 
@@ -316,7 +316,7 @@ export const useContextMenu = (runtime: FlowRuntime, services: FlowEditorService
     duplicateContextTarget,
     duplicateCountValue,
     handleCanvasContextMenu,
-    openEdgeContextMenu,
+    openEdgeContextMenuById,
     openNodeContextMenu,
     openNodeMenuButton,
     openSelectedBoundsContextMenu,

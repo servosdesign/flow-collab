@@ -37,7 +37,7 @@ export const useEditorLifecycle = ({
   } = state
 
   onMounted(() => {
-    window.addEventListener('keydown', selection.handleKeyDown)
+    window.addEventListener('keydown', selection.events.handleKeyDown)
     window.addEventListener('beforeunload', presence.removePresenceUser)
     window.addEventListener('resize', viewport.updateCanvasSize)
     nextTick(viewport.updateCanvasSize)
@@ -54,7 +54,7 @@ export const useEditorLifecycle = ({
         return
       }
 
-      realtime.applyFlowDocument(realtimeConnection.document.data, true)
+      realtime.document.applyFlowDocument(realtimeConnection.document.data, true)
       status.value = 'Live'
       nextTick(nodeActions.sanitizeSectionMembership)
 
@@ -64,7 +64,7 @@ export const useEditorLifecycle = ({
         }
 
         if (
-          realtime.applyRemoteOperation(
+          realtime.document.applyRemoteOperation(
             operation as JsonOp[],
             realtimeConnection.document.data
           )
@@ -73,11 +73,11 @@ export const useEditorLifecycle = ({
           return
         }
 
-        if (realtime.documentMatchesLocal(realtimeConnection.document.data)) {
+        if (realtime.document.documentMatchesLocal(realtimeConnection.document.data)) {
           return
         }
 
-        realtime.applyFlowDocument(realtimeConnection.document.data)
+        realtime.document.applyFlowDocument(realtimeConnection.document.data)
         status.value = 'Live'
       })
     })
@@ -101,12 +101,12 @@ export const useEditorLifecycle = ({
   })
 
   onBeforeUnmount(() => {
-    window.removeEventListener('keydown', selection.handleKeyDown)
+    window.removeEventListener('keydown', selection.events.handleKeyDown)
     window.removeEventListener('beforeunload', presence.removePresenceUser)
     window.removeEventListener('resize', viewport.updateCanvasSize)
-    selection.cleanupSelection()
+    selection.lifecycle.cleanup()
     viewport.cleanupViewport()
-    realtime.cleanupRealtimeSync()
+    realtime.lifecycle.cleanup()
     resize.cleanupResize()
     presence.cleanupPresence()
     state.closeRealtime.value?.()

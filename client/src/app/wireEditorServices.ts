@@ -37,11 +37,11 @@ export const wireEditorServices = (
 
   if (sources.realtime) {
     Object.assign(services, {
-      documentMatchesLocal: sources.realtime.documentMatchesLocal,
-      scheduleGraphSnapshot: sources.realtime.scheduleGraphSnapshot,
-      submitGraphReplacement: sources.realtime.submitGraphReplacement,
-      submitGraphSnapshot: sources.realtime.submitGraphSnapshot,
-      submitOperation: sources.realtime.submitOperation
+      documentMatchesLocal: sources.realtime.document.documentMatchesLocal,
+      scheduleGraphSnapshot: sources.realtime.snapshots.scheduleGraphSnapshot,
+      submitGraphReplacement: sources.realtime.snapshots.submitGraphReplacement,
+      submitGraphSnapshot: sources.realtime.snapshots.submitGraphSnapshot,
+      submitOperation: sources.realtime.operations.submitOperation
     })
   }
 
@@ -54,10 +54,10 @@ export const wireEditorServices = (
 
   if (sources.selection) {
     Object.assign(services, {
-      getSelectedClientBounds: sources.selection.getSelectedClientBounds,
-      getSelectedNodeIds: sources.selection.getSelectedNodeIds,
-      isCanvasSelectionTarget: sources.selection.isCanvasSelectionTarget,
-      selectOnlyNode: sources.selection.selectOnlyNode
+      getSelectedClientBounds: sources.selection.queries.getSelectedClientBounds,
+      getSelectedNodeIds: sources.selection.queries.getSelectedNodeIds,
+      isCanvasSelectionTarget: sources.selection.queries.isCanvasSelectionTarget,
+      selectOnlyNode: sources.selection.commands.selectOnlyNode
     })
   }
 

@@ -1,6 +1,7 @@
 import { useGraphState } from '../domain/graph/useGraphState'
 import { useViewport } from '../features/canvas/useViewport'
 import { useContextMenu } from '../features/context-menu/useContextMenu'
+import { useCanvasEdges } from '../features/edges/useCanvasEdges'
 import { useConnections } from '../features/edges/useConnections'
 import { useNodeActions } from '../features/nodes/useNodeActions'
 import { useResize } from '../features/nodes/useResize'
@@ -13,7 +14,7 @@ import { useEditorViewModels } from './useEditorViewModels'
 import { wireEditorServices } from './wireEditorServices'
 
 export const useFlowEditor = () => {
-  const { edgeTypes, runtime, services, state } = createEditorRuntime()
+  const { runtime, services, state } = createEditorRuntime()
 
   const graphState = useGraphState(runtime)
   wireEditorServices(services, { graphState })
@@ -38,6 +39,12 @@ export const useFlowEditor = () => {
   wireEditorServices(services, { presence })
 
   const connections = useConnections(runtime, services)
+  const canvasEdges = useCanvasEdges(runtime, services, {
+    createEdgeConnection: connections.handleConnect,
+    openEdgeContextMenuById: contextMenu.openEdgeContextMenuById,
+    selectOnlyEdge: selection.commands.selectOnlyEdge,
+    updateEdgeConnectionById: connections.updateEdgeConnectionById
+  })
 
   useEditorLifecycle({
     nodeActions,
@@ -50,10 +57,8 @@ export const useFlowEditor = () => {
   })
 
   return useEditorViewModels({
-    connections,
     contextMenu,
-    edgeTypes,
-    graphState,
+    canvasEdges,
     nodeActions,
     presence,
     realtime,

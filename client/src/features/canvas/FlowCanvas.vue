@@ -26,10 +26,10 @@ const {
       'selection-hover': isHoveringSelection || isMovingSelection
     }"
     aria-label="Shared flow canvas"
-    @contextmenu="handleCanvasContextMenu"
+    @contextmenu.capture="handleCanvasContextMenu"
     @pointerdown.capture="handleCanvasPointerDown"
     @pointerleave="handleCanvasPointerLeave"
-    @pointermove="handleCanvasPointerMove"
+    @pointermove.capture="handleCanvasPointerMove"
   >
     <CanvasOverlays />
     <FlowGraph />
