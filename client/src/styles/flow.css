@@ -2,7 +2,7 @@
   position: absolute;
   left: 0;
   top: 0;
-  z-index: 6;
+  z-index: 4;
   pointer-events: none;
   contain: strict;
   transform-origin: 0 0;
@@ -36,7 +36,10 @@
 }
 
 .canvas-panel.canvas-edge-hover,
-.canvas-panel.canvas-edge-hover * {
+.canvas-panel.canvas-edge-hover .flow-canvas,
+.canvas-panel.canvas-edge-hover .vue-flow__pane,
+.canvas-panel.canvas-edge-hover .vue-flow__node-section,
+.canvas-panel.canvas-edge-hover .section-node {
   cursor: pointer !important;
 }
 

@@ -344,6 +344,7 @@ export const createCanvasEdgeInteractions = (
     setEdgeHover(true)
     event.preventDefault()
     event.stopPropagation()
+    dependencies.selectOnlyEdge(hit.render.id)
     dependencies.openEdgeContextMenuById(hit.render.id, event)
     return true
   }

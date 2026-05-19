@@ -1,5 +1,5 @@
 import type { SyncPresenceUser } from '@vue-flow-sync/shared'
-import { computed } from 'vue'
+import { computed, type ComponentPublicInstance } from 'vue'
 import type { FlowNode } from '../domain/graph'
 import type { useViewport } from '../features/canvas/useViewport'
 import type { useContextMenu } from '../features/context-menu/useContextMenu'
@@ -175,7 +175,9 @@ export const useEditorViewModels = ({
 
   return {
     canvasSurface: {
-      canvasPanel,
+      setCanvasPanel: (element: Element | ComponentPublicInstance | null) => {
+        canvasPanel.value = element instanceof HTMLElement ? element : null
+      },
       handleCanvasContextMenu: (event: MouseEvent) => {
         if (canvasEdges.events.handleContextMenu(event)) {
           return

@@ -8,19 +8,19 @@ import FlowCreateToolbar from './FlowCreateToolbar.vue'
 import FlowGraph from './FlowGraph.vue'
 
 const {
-  canvasPanel,
   handleCanvasContextMenu,
   handleCanvasPointerDown,
   handleCanvasPointerLeave,
   handleCanvasPointerMove,
   isHoveringSelection,
-  isMovingSelection
+  isMovingSelection,
+  setCanvasPanel
 } = useCanvasSurfaceContext()
 </script>
 
 <template>
   <section
-    ref="canvasPanel"
+    :ref="setCanvasPanel"
     class="canvas-panel"
     :class="{
       'selection-hover': isHoveringSelection || isMovingSelection
