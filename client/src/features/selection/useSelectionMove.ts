@@ -198,6 +198,21 @@ export const useSelectionMove = (
       options.getCurrentSelectionOverlayGeometrySnapshot?.() ?? null
   }
 
+  const getCapturedSelectionMoveBounds = (
+    selectedIds: string[]
+  ) : SelectionMoveDrag['selectedFlowBounds'] => {
+    const snapshot = activeSelectionOverlayGeometrySnapshot
+
+    if (!snapshot?.selectedBounds || snapshot.selectedIdsKey !== getSelectionIdsKey(selectedIds)) {
+      return null
+    }
+
+    return {
+      ...snapshot.selectedBounds,
+      padding: snapshot.selectedBounds.padding ?? selectionBoundsPadding
+    }
+  }
+
   const clearSelectionOverlayGeometrySnapshots = () => {
     activeSelectionOverlayGeometrySnapshot = null
     runtime.selectionOverlayGeometrySnapshot.value = null
@@ -485,9 +500,7 @@ export const useSelectionMove = (
         : 'visible'
     )
     const presentationStrategy: SelectionMovePresentationStrategy =
-      mode === 'bundle' &&
-      movingIds.size === 1 &&
-      previewMetadata.counts.sectionCount === 1
+      mode === 'bundle'
         ? 'origin-mask'
         : 'element-classes'
     const originalSyncNodesById = new Map(normalizedOriginalNodes.map((node) => [node.id, node]))
@@ -618,6 +631,9 @@ export const useSelectionMove = (
     const movingIds = getMovableSelectedIds(normalizedOriginalNodes, options.getSelectedNodeIds())
 
     captureSelectionOverlayGeometrySnapshot()
+    const selectedFlowBounds =
+      getCapturedSelectionMoveBounds(selectedIds) ??
+      getSelectionFlowBoundsSnapshot(selectedIds, normalizedOriginalNodes)
     const started = beginSelectionMove({
       startClientX: event.clientX,
       startClientY: event.clientY,
@@ -627,7 +643,7 @@ export const useSelectionMove = (
       target,
       previewElement: getSelectionOutlineElement(runtime, event, target),
       movingIds,
-      selectedFlowBounds: getSelectionFlowBoundsSnapshot(selectedIds, normalizedOriginalNodes),
+      selectedFlowBounds,
       normalizedOriginalNodes
     })
 
@@ -1002,16 +1018,18 @@ export const useSelectionMove = (
       ? getMovableSelectedIds(normalizedOriginalNodes, selectedIds)
       : new Set([pending.nodeId])
     const useSingleSectionPreview = !moveSelection && node.type === 'section'
-    const selectedFlowBounds = moveSelection
-      ? getSelectionFlowBoundsSnapshot(selectedIds, normalizedOriginalNodes)
-      : useSingleSectionPreview
-        ? getSelectionFlowBoundsSnapshot([pending.nodeId], normalizedOriginalNodes)
-        : null
+    let selectedFlowBounds: SelectionMoveDrag['selectedFlowBounds'] = null
 
     if (moveSelection) {
       captureSelectionOverlayGeometrySnapshot()
+      selectedFlowBounds =
+        getCapturedSelectionMoveBounds(selectedIds) ??
+        getSelectionFlowBoundsSnapshot(selectedIds, normalizedOriginalNodes)
     } else {
       activeSelectionOverlayGeometrySnapshot = null
+      selectedFlowBounds = useSingleSectionPreview
+        ? getSelectionFlowBoundsSnapshot([pending.nodeId], normalizedOriginalNodes)
+        : null
     }
 
     const started = beginSelectionMove({
