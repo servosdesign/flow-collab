@@ -33,6 +33,10 @@ type SelectionMoveCommitOptions = {
   restoreSelectionMoveRuntimeSnapshots: (drag: SelectionMoveDrag) => void
 }
 
+const getNodeIndexById = (nodes: SyncNode[]) => {
+  return new Map(nodes.map((node, index) => [node.id, index]))
+}
+
 export const createSelectionMoveCommit = (
   runtime: FlowRuntime,
   services: FlowEditorServices,
@@ -152,6 +156,7 @@ export const createSelectionMoveCommit = (
   ) => {
     const graph = createGraphCache(documentNodes)
     const dragItemsById = getDragItemById(drag)
+    const nodeIndexById = getNodeIndexById(documentNodes)
     const delta = options.getSelectionMoveDelta(drag)
     const changes: PositionOnlyNodeChange[] = []
 
@@ -200,9 +205,9 @@ export const createSelectionMoveCommit = (
         continue
       }
 
-      const index = documentNodes.findIndex((node) => node.id === nodeId)
+      const index = nodeIndexById.get(nodeId)
 
-      if (index < 0) {
+      if (index == null) {
         return null
       }
 
@@ -229,6 +234,7 @@ export const createSelectionMoveCommit = (
 
     const [sectionId] = Array.from(drag.movingIds)
     const graph = createGraphCache(documentNodes)
+    const nodeIndexById = getNodeIndexById(documentNodes)
     const section = graph.nodeById.get(sectionId)
 
     if (!section || section.type !== 'section') {
@@ -285,9 +291,9 @@ export const createSelectionMoveCommit = (
       return []
     }
 
-    const index = documentNodes.findIndex((node) => node.id === sectionId)
+    const index = nodeIndexById.get(sectionId)
 
-    if (index < 0) {
+    if (index == null) {
       return null
     }
 

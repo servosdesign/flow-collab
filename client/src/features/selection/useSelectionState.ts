@@ -4,6 +4,7 @@ import type { FlowEdge } from '../../domain/graph'
 import type { FlowRuntime } from '../../flowRuntime'
 import { getNodeElementById } from './selectionDom'
 import { getSelectionIdsKey } from './selectionOverlayGeometry'
+import { largeSelectionMovePreviewThreshold } from './selectionMove/constants'
 
 type SelectionUpdateOptions = {
   deferEffects?: boolean
@@ -33,18 +34,21 @@ export const useSelectionState = (runtime: FlowRuntime, services: FlowEditorServ
     selectedRootClassFrame = undefined
 
     const nextIds = runtime.selectedNodeIds.value
+    const nextClassIds = nextIds.size > largeSelectionMovePreviewThreshold
+      ? new Set<string>()
+      : nextIds
 
     selectedRootClassIds.forEach((nodeId) => {
-      if (!nextIds.has(nodeId)) {
+      if (!nextClassIds.has(nodeId)) {
         getNodeElementById(runtime, nodeId)?.classList.remove(selectionSelectedClass)
       }
     })
 
-    nextIds.forEach((nodeId) => {
+    nextClassIds.forEach((nodeId) => {
       getNodeElementById(runtime, nodeId)?.classList.add(selectionSelectedClass)
     })
 
-    selectedRootClassIds = new Set(nextIds)
+    selectedRootClassIds = new Set(nextClassIds)
   }
 
   const scheduleSelectedRootClassSync = () => {

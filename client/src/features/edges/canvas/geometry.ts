@@ -71,6 +71,10 @@ const getHandleGeometryKey = (handle: HandleElement | null) => {
   ].join(',')
 }
 
+const getHandleBoundsGeometryKey = (handles: HandleElement[] | null | undefined) => {
+  return handles?.map(getHandleGeometryKey).join(';') ?? ''
+}
+
 const getNodeGeometryKey = (
   node: GraphNode | null | undefined,
   handleType: 'source' | 'target',
@@ -90,6 +94,22 @@ const getNodeGeometryKey = (
     roundGeometryValue(node.dimensions.height),
     getHandleGeometryKey(getRelevantHandle(node, handleType, handleId))
   ].join(':')
+}
+
+export const getCanvasNodeGeometrySignature = (runtime: FlowRuntime) => {
+  return runtime.getNodes.value
+    .map((node) => [
+      node.id,
+      node.hidden ? 1 : 0,
+      node.parentNode ?? '',
+      roundGeometryValue(node.computedPosition?.x),
+      roundGeometryValue(node.computedPosition?.y),
+      roundGeometryValue(node.dimensions?.width),
+      roundGeometryValue(node.dimensions?.height),
+      getHandleBoundsGeometryKey(node.handleBounds?.source),
+      getHandleBoundsGeometryKey(node.handleBounds?.target)
+    ].join(':'))
+    .join('|')
 }
 
 const classSignature = (edge: CanvasGraphEdge) => edgeClassSignature(edge.class)

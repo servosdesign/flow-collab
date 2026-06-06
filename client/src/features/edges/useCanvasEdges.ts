@@ -1,6 +1,7 @@
 import { nextTick, onBeforeUnmount, watch } from 'vue'
 import type { FlowEditorServices } from '../../app/flowEditorServices'
 import type { FlowRuntime } from '../../flowRuntime'
+import { getCanvasNodeGeometrySignature } from './canvas/geometry'
 import type { CanvasEdgeDependencies } from './canvas/types'
 import { createCanvasEdgeInteractions } from './canvas/useCanvasEdgeInteractions'
 import { createCanvasHandleConnections } from './canvas/useCanvasHandleConnections'
@@ -71,7 +72,7 @@ export const useCanvasEdges = (
   )
 
   watch(runtime.edges, renderer.markEdgesDirty, { deep: true, flush: 'post' })
-  watch(runtime.getNodes, renderer.markGeometryDirty, { deep: true, flush: 'post' })
+  watch(() => getCanvasNodeGeometrySignature(runtime), renderer.markGeometryDirty, { flush: 'post' })
   watch(runtime.selectionMoveHiddenEdgeIds, renderer.markGeometryDirty, { flush: 'post' })
   watch(runtime.selectionMovePreviewVersion, renderer.scheduleDraw, { flush: 'post' })
 
